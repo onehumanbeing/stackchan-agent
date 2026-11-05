@@ -9,6 +9,7 @@ Use the CLI: every command prints one JSON object (or NDJSON lines for `stream`)
 ./stackchan move 1 15 --wait           # go to +15 deg, print the final state
 ./stackchan sync 1=10 5=-10            # several servos at once
 ./stackchan torque 1 off               # limp (lets a person pose the arm)
+./stackchan calibrate --arms           # after a person posed the arms hanging down: that is home (0)
 ./stackchan stream --ids 1,5 --hz 20 --seconds 3
 ./stackchan face happy --say "hi" --ms 3000
 ./stackchan face --list                # 24 expressions; `face demo` plays them all

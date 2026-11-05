@@ -101,6 +101,8 @@ python3 -m venv cli/.venv && cli/.venv/bin/pip install -r cli/requirements.txt
 ./stackchan wifi set "MySSID"    # asks for the password; stored on the robot only
 ./stackchan scan                 # servo ids on the bus
 ./stackchan selftest             # each servo: +-10 deg at half torque, checks it got there
+./stackchan torque 1 off; ./stackchan torque 5 off   # pose both arms hanging straight down, then:
+./stackchan calibrate --arms     # that pose becomes home (0) for the agent, the dance and the 3D twin
 ```
 
 New STS3215 servos all ship as id 1. With several on the bus, connect one at a time and give each its own id:
@@ -177,8 +179,8 @@ Expressions live in `face_lib.cpp`.
 
 ## Dance
 
-A fixed, repeatable 20 s dance with its own music, played by the robot's speaker. No model is involved, and only the
-CLI starts it (the agent cannot). Poses sit on beats of one clock, `beat = (now - start - MUSIC_OFFSET_S) * BPM / 60`,
+A fixed, repeatable 20 s dance with its own music, played by the robot's speaker. No model is involved: the CLI starts
+it, or say "Hey Grok, music!" (any command with "music" / "音乐"); the agent itself never does. Poses sit on beats of one clock, `beat = (now - start - MUSIC_OFFSET_S) * BPM / 60`,
 where `start` is the moment the robot starts playing; if the music is missing, the dance runs on the same clock alone.
 
 ```sh

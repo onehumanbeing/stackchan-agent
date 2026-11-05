@@ -4,7 +4,11 @@ A keyframe is (seconds, {joint: offset_deg}).  Offsets are relative to the pose 
 and arm offsets point toward the middle of travel (so +30 never drives an arm into its end stop).
 Joints: "arm:<servo id>" (STS bus), "yaw" / "pitch" (head).  Every gesture ends back at the start pose.
 """
+import json
 import time
+from pathlib import Path
+
+CALIBRATION = Path(__file__).with_name("calibration.json")
 
 GESTURES = {
     "wave": [
@@ -28,6 +32,10 @@ def play(link, name, arms=None):
     if arms is not None:
         ids = [i for i in ids if i in arms]
     start = {i: link.request("servo.read", id=i)["deg"] for i in ids}
+    try:
+        ups = {k: j["up"] for k, j in json.loads(CALIBRATION.read_text())["joints"].items() if "up" in j}
+    except (OSError, ValueError, KeyError):
+        ups = {}
     head = {}
     if {"yaw", "pitch"} & joints:
         for s in link.request("head.read")["servos"]:
@@ -37,7 +45,7 @@ def play(link, name, arms=None):
         for i in ids:
             j = f"arm:{i}"
             off = frame.get(j, 0.0)
-            sign = -1 if start[i] > 0 else 1                       # toward the middle of travel
+            sign = ups.get(str(i), -1 if start[i] > 0 else 1)     # the arm's "up" direction (calibration.json)
             speed = max(50, int(abs(off - now[j]) * STEPS_PER_DEG / dur))
             link.request("servo.move", id=i, deg=start[i] + sign * off, speed=speed, acc=0)
             now[j] = off

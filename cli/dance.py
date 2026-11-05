@@ -1,6 +1,6 @@
 """The default dance: a fixed choreography on a beat clock, with the music played by the robot's own speaker.
 
-No model, no camera, no speech: the same 20 s every time.  Every pose sits on a beat of the timeline below;
+No model, no camera: the same 20 s every time.  Started by the CLI or by saying "music" after the wake word.  Every pose sits on a beat of the timeline below;
 the move toward it starts at the previous pose and takes exactly the time between them, so poses land on
 the beat.  Arms use the STS speed + acceleration ramp (soft start and stop), the head its travel time.
 
@@ -34,21 +34,26 @@ def _timeline():
     t = [(-1.0, {"l": 0, "r": 0, "yaw": 0, "pitch": 0}, "neutral")]
     add = lambda b, face=None, **pose: t.append((b, pose, face))
 
-    def bounce(b, side, hi=60, lo=30, yaw=12):      # weight shifts to one side, down on the beat, up on the "and"
-        add(b, l=hi if side > 0 else lo, r=lo if side > 0 else hi, yaw=yaw * side, pitch=-6)
-        add(b + 0.5, pitch=6)
+    def bounce(b, side, hi=60, lo=30, yaw=16):      # weight shifts to one side; the head bobs: down on the beat,
+        add(b, l=hi if side > 0 else lo, r=lo if side > 0 else hi, yaw=yaw * side, pitch=-8)
+        add(b + 0.5, yaw=yaw * side * 0.4, pitch=10)    # up and back toward the middle on the "and"
 
     add(0, "excited", l=20, r=20, pitch=-8)          # 0-2: crouch, arms to the ready pose, eyes light up
     add(1, l=40, r=40, pitch=12)
     for b in range(2, 6):
         bounce(b, 1 if b % 2 else -1)
-    add(6, l=100, r=100, yaw=0, pitch=18)            # hit 1: both arms up, head up
-    add(7, l=45, r=45, pitch=0)
+    add(6, l=100, r=100, yaw=0, pitch=18)            # hit 1: both arms up, head up, then a head wiggle
+    add(6.5, yaw=12)
+    add(7, l=45, r=45, yaw=-12, pitch=0)
+    add(7.5, yaw=0)
     for b in range(8, 13):
         bounce(b, 1 if b % 2 else -1)
-    add(13, "wink", l=100, r=30, yaw=12, pitch=10)   # hit 2: a wave, left -> right -> left
-    add(14, l=30, r=100, yaw=-12)
-    add(15, l=100, r=30, yaw=12)
+    add(13, "wink", l=100, r=30, yaw=18, pitch=10)   # hit 2: a wave, left -> right -> left; the head follows the high arm
+    add(13.5, pitch=-4)
+    add(14, l=30, r=100, yaw=-18, pitch=10)
+    add(14.5, pitch=-4)
+    add(15, l=100, r=30, yaw=18, pitch=10)
+    add(15.5, pitch=-4)
     add(16, "excited", l=45, r=45, yaw=0, pitch=0)
     for b in range(17, 22):
         bounce(b, 1 if b % 2 else -1)
@@ -67,8 +72,9 @@ def _timeline():
     add(31, l=45, r=45, pitch=0)
     for b in range(32, 38):
         bounce(b, 1 if b % 2 else -1)
-    add(38, l=90, r=30, yaw=YAW_MAX, pitch=12)        # hit 5: a turn to one side ...
-    add(39, l=90, r=30, yaw=YAW_MAX, pitch=12)        # hold
+    add(38, l=90, r=30, yaw=YAW_MAX, pitch=12)        # hit 5: a turn to one side, a little head shake there ...
+    add(38.5, yaw=YAW_MAX - 12, pitch=6)
+    add(39, l=90, r=30, yaw=YAW_MAX, pitch=12)
     add(39.5, l=45, r=45, yaw=0, pitch=0)            # ... and back
     bounce(40, 1, 70, 30, 15)                        # ending: half-time bounces
     bounce(42, -1, 70, 30, 15)
@@ -166,9 +172,10 @@ class Dance:
         if key in ARMS:
             sid = ARMS[key]
             zero = j.get(str(sid), {}).get("zero", 0)
+            up = j.get(str(sid), {}).get("up", -1 if zero > 0 else 1)
             steps = abs(value - (frm or 0)) * 4096 / 360
             speed = max(100, min(ARM_SPEED_MAX, int(steps / dur * 1.3))) if frm is not None else 600
-            return "servo.move", dict(id=sid, deg=zero + (-1 if zero > 0 else 1) * value, speed=speed, acc=ARM_ACC)
+            return "servo.move", dict(id=sid, deg=zero + up * value, speed=speed, acc=ARM_ACC)
         hid = 1 if key == "yaw" else 2
         return "head.move", dict(id=hid, deg=h.get(f"{key}_zero", 0) + h.get(f"{key}_sign", 1) * value, ms=int(dur * 1000))
 

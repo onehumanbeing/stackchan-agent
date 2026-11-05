@@ -25,6 +25,7 @@ from pathlib import Path
 RATE, CHUNK_S = 16000, 0.04
 WAKE = re.compile(r"(?:(?:hey|hi|hay|hei|a|ay|eh|ok|okay|嘿|黑|嗨|哈)[\s,.!，。！、]*)?(?<![a-z])(grok|grock|groq|grog|grokk|groc|grob|grov|crok|格罗克|格洛克|葛洛克|格鲁克)"
                   r"|(?:hey|hi|嘿|黑)[\s,.!，。！、]*(rock|brock|crock|croc|grow|grove|格罗|葛)", re.I)
+MUSIC = re.compile(r"\bmusic\b|音乐", re.I)    # a spoken command with this starts the dance (dance.py)
 PREROLL_S = 0.4              # audio kept from before the level rises, so soft starts ("Hey") are not cut
 # No whisper --prompt: with "Hey Grok" as a prompt it hears "Grok." in silence and servo noise.
 HEARD = {"zh": "我在听", "en": "Listening"}
@@ -217,8 +218,11 @@ class Voice(threading.Thread):
                 continue
             self._unlift()
             self.mode = "busy"
-            self.agent.hear(text)
-            self.agent.idle.wait(60)
+            if MUSIC.search(text):                   # "Hey Grok, music!": the default dance, no model involved
+                self._dance(text)
+            else:
+                self.agent.hear(text)
+                self.agent.idle.wait(60)
             self._mic(True)
             self._listen(FOLLOW_S)                   # a conversation: the next sentence needs no wake word
 
@@ -250,6 +254,13 @@ class Voice(threading.Thread):
                 self.robot.request("face.set", expression="neutral")
             except (RuntimeError, TimeoutError):
                 pass
+
+    def _dance(self, text):
+        from dashboard import DANCING, dance_api
+        self.agent._pub(heard=text, status="dancing", thinking="", say="", steps=[{"act": {"do": "gesture", "name": "dance"}, "ok": True}])
+        r = dance_api(self.robot, self.agent, {})
+        if r.get("ok"):
+            DANCING["dance"].thread.join(60)
 
     def _unlift(self):
         if self.lifted is not None:

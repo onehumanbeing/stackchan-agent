@@ -179,7 +179,7 @@ class Agent(threading.Thread):
             if not j or str(sid) not in r.snapshot().get("servos", {}):
                 raise RuntimeError(f"arm {act.get('side')!r} is not connected")
             deg = max(0.0, min(100.0, float(act.get("deg", 0))))
-            toward_mid = -1 if j["zero"] > 0 else 1
+            toward_mid = j.get("up", -1 if j["zero"] > 0 else 1)
             prev = r.snapshot()["servos"][str(sid)].get("deg", j["zero"])
             target = j["zero"] + toward_mid * deg
             speed = max(200, min(3000, int(abs(target - prev) * 4096 / 360 / (ms / 1000)))) if "ms" in act else 800

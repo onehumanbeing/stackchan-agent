@@ -86,6 +86,7 @@ function poseFull(j) {
 
 // State from the dashboard (SSE): servo degrees, head degrees, body variant, calibration.
 const target = {ls: 0, le: 0, lw: 0, lj: 0, rs: 0, rj: 0, yaw: 0, pitch: 0}, shown = {...target};
+const raise = {ls: 0, rs: 0}, raised = {...raise};
 let body = "simple", online = {left: false, right: false};
 window.twinUpdate = s => {
   const cal = s.calibration || {joints: {}, head: {}};
@@ -94,6 +95,7 @@ window.twinUpdate = s => {
   for (const [id, sv] of Object.entries(s.servos || {})) {
     const j = cal.joints[id];
     if (j) target[j.joint] = j.sign * (sv.deg - j.zero);
+    if (j && j.up != null) raise[j.joint] = j.up * (sv.deg - j.zero);   // shoulders: 0 = hanging down, 90 = forward
   }
   online = {left: !!(s.servos || {})[1], right: !!(s.servos || {})[5]};
   const h = s.head || {}, hc = cal.head || {};
@@ -115,12 +117,13 @@ function resize() { const w = view.clientWidth, h = view.clientHeight; renderer.
 addEventListener("resize", resize); resize();
 (function loop() {
   for (const k in shown) shown[k] += (target[k] - shown[k]) * 0.25;
+  for (const k in raised) raised[k] += (raise[k] - raised[k]) * 0.25;
   bot.yaw.rotation.y = rad(shown.yaw);
   bot.pitch.rotation.x = -rad(shown.pitch);
   for (const [side, j] of [["left", "ls"], ["right", "rs"]]) {
     const sh = bot.shoulders[side], isFull = body === "full" && full.ready;
     sh.simple.visible = online[side] && !isFull;
-    sh.pivot.rotation.x = -rad(shown[j]);
+    sh.pivot.rotation.x = isFull ? -rad(shown[j]) : rad(90 - raised[j]);   // simple arms: home = hanging down
     if (full.ready) full[side].visible = online[side] && isFull;
   }
   if (body === "full" && full.ready) {

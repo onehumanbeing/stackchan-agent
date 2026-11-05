@@ -99,6 +99,8 @@ python3 -m venv cli/.venv && cli/.venv/bin/pip install -r cli/requirements.txt
 ./stackchan wifi set "MySSID"    # 会提示输入密码；只保存在机器人上
 ./stackchan scan                 # 总线上的舵机 id
 ./stackchan selftest             # 每个舵机半扭矩转 +-10 度，检查是否到位
+./stackchan torque 1 off; ./stackchan torque 5 off   # 把双臂摆成自然下垂，然后：
+./stackchan calibrate --arms     # 这个姿态成为归位（0）：agent、舞蹈和 3D 都以它为准
 ```
 
 新的 STS3215 舵机出厂 id 都是 1。总线上有多个舵机时，一次只接一个，给每个分配独立 id：`./stackchan set-id 1 2`。
@@ -171,7 +173,7 @@ surprised、scared、dizzy、sleepy、sigh、bored、listening、thinking、dayd
 
 ## 舞蹈
 
-一段固定、每次都一样的 20 秒舞蹈，配乐由机器人自己的喇叭播放。全程不经过模型，只能由 CLI 启动（agent 不能触发）。
+一段固定、每次都一样的 20 秒舞蹈，配乐由机器人自己的喇叭播放。全程不经过模型：用 CLI 启动，或者说 "Hey Grok, music!"（指令里带 "music" / "音乐" 就行）；agent 自己不会触发。
 所有姿态都落在同一个时钟的拍点上：`beat = (now - start - MUSIC_OFFSET_S) * BPM / 60`，`start` 是机器人开始出声的时刻；
 没有音乐文件时，舞蹈照样按同一时钟跳完。
 

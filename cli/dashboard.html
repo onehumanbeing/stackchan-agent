@@ -104,7 +104,7 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;
 const FACE = {neutral:"🙂", happy:"😊", excited:"🤩", love:"😍", shy:"😳", wink:"😉", proud:"😌", smug:"😏", sad:"😢",
   cry:"😭", angry:"😠", doubt:"🤨", curious:"🧐", surprised:"😮", scared:"😱", dizzy:"😵‍💫", sleepy:"😪", sigh:"😮‍💨",
   bored:"😑", listening:"👂", thinking:"🤔", daydream:"💭", yawn:"🥱", doze:"😴"};
-const GESTURE = {wave:"👋", nod:"🙆", shake:"🙅"};
+const GESTURE = {wave:"👋", nod:"🙆", shake:"🙅", dance:"💃"};
 function describe(a) {
   const quick = a.ms ? ` <span class="ms">${a.ms} ms</span>` : "";
   if (a.say != null) return `${a.face ? FACE[a.face] || "🙂" : "💬"} “${esc(a.say)}”`;

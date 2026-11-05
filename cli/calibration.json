@@ -1,10 +1,11 @@
 {
-  "_doc": "Servo id -> 3D joint: angle = sign * (servo_deg - zero), 0 = home pose (arms straight forward). `stackchan calibrate` sets the zeros. head: same for the head servos. body: 3D variant, simple | full (`stackchan view`).",
+  "_doc": "Servo id -> 3D joint: angle = sign * (servo_deg - zero). Arms: zero = home pose (hanging down), \"up\" = the direction (+1/-1) that raises the arm forward. `stackchan calibrate --arms` sets the arm zeros. head: same for the head servos. body: 3D variant, simple | full (`stackchan view`).",
   "joints": {
     "1": {
       "joint": "ls",
       "zero": 162.0,
-      "sign": 1
+      "sign": 1,
+      "up": -1
     },
     "2": {
       "joint": "le",
@@ -24,7 +25,8 @@
     "5": {
       "joint": "rs",
       "zero": 167.5,
-      "sign": 1
+      "sign": 1,
+      "up": -1
     },
     "6": {
       "joint": "rj",

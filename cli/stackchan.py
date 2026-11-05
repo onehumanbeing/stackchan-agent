@@ -184,7 +184,8 @@ def main(argv=None):
     p = sub.add_parser("view", help="3D body on the live page: simple (two shoulder servos) | full (r7 arms)")
     p.add_argument("body", choices=["simple", "full"])
     p.add_argument("--dash", default="http://127.0.0.1:8765", help="live page address")
-    sub.add_parser("calibrate", help="arms in the home pose (straight forward): save their angles as the 3D model's zero")
+    p = sub.add_parser("calibrate", help="robot in its home pose (arms hanging down, head straight): save the angles as zero")
+    p.add_argument("--arms", action="store_true", help="only the arms (leave the head zeros)")
     p = sub.add_parser("selftest", help="move each servo a little and check it got there")
     p.add_argument("--ids", help="default: every id on the bus")
     p.add_argument("--deg", type=float, default=10.0)
@@ -330,7 +331,7 @@ def main(argv=None):
                     j["zero"] = done[sid] = link.request("servo.read", id=int(sid))["deg"]
                 except (RuntimeError, TimeoutError):
                     pass                      # not connected yet: keep the old zero
-            for h in link.request("head.read")["servos"]:
+            for h in [] if a.arms else link.request("head.read")["servos"]:
                 cal["head"]["yaw_zero" if h["id"] == 1 else "pitch_zero"] = done["head_" + str(h["id"])] = h["deg"]
             json.dump(cal, open(path, "w"), indent=2)
             out({"file": path, "zero": done})
