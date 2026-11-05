@@ -23,9 +23,9 @@ BEATS = 23                   # length: 23 beats = 10.2 s; the song (20 s) is cut
 FADE_S = 1.2                 # music fade-out at the end
 MUSIC = Path.home() / ".cache" / "stackchan-agent" / "dance.mp3"
 VOLUME = 200                 # speaker 0..255 (the agent uses 180)
-ARM_MAX, YAW_MAX, PITCH_MAX = 100, 28, 30    # deg from neutral; arms: 0 = down, toward the middle of travel
+ARM_MAX, YAW_MAX, PITCH_MAX = 100, 28, 28    # deg from neutral; arms: 0 = down, toward the middle of travel
 ARM_SPEED_MAX = 3200         # STS steps/s (~280 deg/s)
-HEAD_SNAP_S = 0.12           # the head snaps to each pose this fast, then holds it (crisper than gliding)
+HEAD_SNAP_S = 1.0            # longest head travel; >= one beat = the head glides like the arms (0.12 snapped: too jerky)
 ARM_ACC = 200                # x100 steps/s^2: the soft start / stop of every arm move (60 was too soft: arms fell behind the beat)
 ARMS = {"l": 1, "r": 5}      # servo ids: left, right shoulder
 RATE = 16000
@@ -36,35 +36,33 @@ def _timeline():
     t = [(-1.0, {"l": 0, "r": 0, "yaw": 0, "pitch": 0}, "neutral")]
     add = lambda b, face=None, **pose: t.append((b, pose, face))
 
-    def bounce(b, side, hi=60, lo=30, yaw=18):      # a DJ head bob: nod down hard on the beat, then throw the head
-        add(b, l=hi if side > 0 else lo, r=lo if side > 0 else hi, yaw=yaw * side * 0.3, pitch=-12)
-        add(b + 0.5, yaw=yaw * side, pitch=26)          # up and swing it to one side on the "and"; arms shift weight
+    # Head and arms move as one gesture: every keyframe sets both, so they start and land together.
+    # Arms up -> head up; arms down -> a nod; one arm high -> the head turns to look at it.
+    def sway(b, side, hi=80, lo=30):                 # weight to one side, looking at the high arm
+        add(b, l=hi if side > 0 else lo, r=lo if side > 0 else hi, yaw=18 * side, pitch=14)
 
-    add(0, "excited", l=20, r=20, pitch=-12)          # 0-2: crouch, arms to the ready pose, eyes light up
-    add(1, l=40, r=40, pitch=26)
+    def pump(b, up):                                 # both arms up with the head, then down with a nod
+        add(b, l=75 if up else 35, r=75 if up else 35, yaw=0, pitch=18 if up else -8)
+
+    add(0, "excited", l=30, r=30, pitch=-6)          # 0-2: ready pose, eyes light up
+    add(1, l=45, r=45, pitch=10)
     for b in range(2, 6):
-        bounce(b, 1 if b % 2 else -1)
-    add(6, l=100, r=100, yaw=0, pitch=30)            # hit 1: both arms up, head up, then a head wiggle
-    add(6.5, yaw=12)
-    add(7, l=45, r=45, yaw=-12, pitch=0)
-    add(7.5, yaw=0)
+        sway(b, 1 if b % 2 == 0 else -1)
+    add(6, "proud", l=100, r=100, yaw=0, pitch=28)   # hit 1 (strong beat): both arms up, head up high
+    add(7, "excited", l=40, r=40, pitch=-10)         # ... and down together, a big nod
     for b in range(8, 12):
-        bounce(b, 1 if b % 2 else -1)
-    add(12, l=80, r=20, yaw=20, pitch=-6)            # the drop: two big swings, freeze, open up on the strong beat
-    add(13, l=30, r=80, yaw=-20, pitch=-6)
-    add(13.25, r=80, yaw=-20, pitch=-6)              # freeze a quarter beat (the left arm already rises to open up)
-    add(14, "surprised", l=95, r=95, yaw=0, pitch=30)
-    add(14.5, "excited")
-    add(15, l=45, r=45, pitch=0)
-    add(16, "wink", l=100, r=30, yaw=18, pitch=22)   # a wave, left -> right -> left; the head follows the high arm
-    add(16.5, pitch=-10)
-    add(17, l=30, r=100, yaw=-18, pitch=22)
-    add(17.5, pitch=-10)
-    add(18, l=100, r=30, yaw=18, pitch=22)
-    add(18.5, pitch=-10)
+        pump(b, b % 2 == 0)
+    add(12, l=85, r=25, yaw=22, pitch=10)            # the drop: a big swing each way, freeze, open up
+    add(13, l=25, r=85, yaw=-22, pitch=10)
+    add(13.5, r=85, yaw=-22, pitch=10)               # freeze half a beat (the left arm already rises to open up)
+    add(14, "surprised", l=90, r=90, yaw=0, pitch=28)   # strong beat: arms open, head up
+    add(15, "excited", l=45, r=45, pitch=0)
+    add(16, "wink", l=100, r=30, yaw=18, pitch=16)   # a wave, left -> right -> left; the head follows the high arm
+    add(17, l=30, r=100, yaw=-18, pitch=16)
+    add(18, l=100, r=30, yaw=18, pitch=16)
     add(19, "happy", l=45, r=45, yaw=0, pitch=0)
-    add(20, l=100, r=20, yaw=0, pitch=26)            # one arm high, one low: freeze half a beat
-    add(20.5, l=100, r=20, yaw=0, pitch=26)
+    add(20, l=100, r=20, yaw=15, pitch=24)           # final pose: one arm high, looking up at it, held half a beat
+    add(20.5, l=100, r=20, yaw=15, pitch=24)
     add(22, "neutral", l=0, r=0, yaw=0, pitch=0)     # together back to neutral, on the last strong beat
     return sorted(t, key=lambda f: f[0])
 
