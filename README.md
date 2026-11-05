@@ -188,7 +188,7 @@ Expressions live in `face_lib.cpp`.
 
 ## Dance
 
-A fixed, repeatable 20 s dance with its own music, played by the robot's speaker. No model is involved: the CLI starts
+A fixed, repeatable 10 s dance with its own music, played by the robot's speaker. No model is involved: the CLI starts
 it, or say "Hey Buddy, music!" (any command with "music" / "dance" / "音乐" / "跳舞"); the agent itself never does. Poses sit on beats of one clock, `beat = (now - start - MUSIC_OFFSET_S) * BPM / 60`,
 where `start` is the moment the robot starts playing; if the music is missing, the dance runs on the same clock alone.
 

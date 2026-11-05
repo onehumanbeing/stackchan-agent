@@ -1,6 +1,6 @@
-"""The default dance: a fixed choreography on a beat clock, with the music played by the robot's own speaker.
+"""The default dance (10 s): a fixed choreography on a beat clock, with the music played by the robot's own speaker.
 
-No model, no camera: the same 20 s every time.  Started by the CLI or by saying "music" after the wake word.  Every pose sits on a beat of the timeline below;
+No model, no camera: the same 10 s every time.  Started by the CLI or by saying "music" after the wake word.  Every pose sits on a beat of the timeline below;
 the move toward it starts at the previous pose and takes exactly the time between them, so poses land on
 the beat.  Arms use the STS speed + acceleration ramp (soft start and stop), the head its travel time.
 
@@ -19,7 +19,8 @@ from pathlib import Path
 # --- tuning -------------------------------------------------------------------------------------
 BPM = 140                    # the song's tempo (measured; one beat = 0.43 s)
 MUSIC_OFFSET_S = 0.295       # the first beat, seconds after the music starts
-BEATS = 46                   # length: 46 beats = 19.7 s, the song is 20.0 s
+BEATS = 23                   # length: 23 beats = 10.2 s; the song (20 s) is cut there with a fade-out
+FADE_S = 1.2                 # music fade-out at the end
 MUSIC = Path.home() / ".cache" / "stackchan-agent" / "dance.mp3"
 VOLUME = 200                 # speaker 0..255 (the agent uses 180)
 ARM_MAX, YAW_MAX, PITCH_MAX = 100, 28, 18    # deg from neutral; arms: 0 = down, toward the middle of travel
@@ -46,41 +47,24 @@ def _timeline():
     add(6.5, yaw=12)
     add(7, l=45, r=45, yaw=-12, pitch=0)
     add(7.5, yaw=0)
-    for b in range(8, 13):
+    for b in range(8, 12):
         bounce(b, 1 if b % 2 else -1)
-    add(13, "wink", l=100, r=30, yaw=18, pitch=10)   # hit 2: a wave, left -> right -> left; the head follows the high arm
-    add(13.5, pitch=-4)
-    add(14, l=30, r=100, yaw=-18, pitch=10)
-    add(14.5, pitch=-4)
-    add(15, l=100, r=30, yaw=18, pitch=10)
-    add(15.5, pitch=-4)
-    add(16, "excited", l=45, r=45, yaw=0, pitch=0)
-    for b in range(17, 22):
-        bounce(b, 1 if b % 2 else -1)
-    add(22, l=70, r=70, yaw=0, pitch=-10)            # hit 3: two quick nods
-    add(22.25, pitch=8)
-    add(22.5, pitch=-10)
-    add(22.75, pitch=8)
-    add(23, l=45, r=45, pitch=0)
-    for b in range(24, 28):
-        bounce(b, 1 if b % 2 else -1)
-    add(28, l=80, r=20, yaw=20, pitch=-6)            # the drop: two big swings, freeze, open up
-    add(29, l=30, r=80, yaw=-20, pitch=-6)
-    add(29.25, r=80, yaw=-20, pitch=-6)              # freeze a quarter beat (the left arm already rises to open up)
-    add(30, "surprised", l=95, r=95, yaw=0, pitch=18)
-    add(30.5, "excited")
-    add(31, l=45, r=45, pitch=0)
-    for b in range(32, 38):
-        bounce(b, 1 if b % 2 else -1)
-    add(38, l=90, r=30, yaw=YAW_MAX, pitch=12)        # hit 5: a turn to one side, a little head shake there ...
-    add(38.5, yaw=YAW_MAX - 12, pitch=6)
-    add(39, l=90, r=30, yaw=YAW_MAX, pitch=12)
-    add(39.5, yaw=0, pitch=0)                        # ... and back (the arms go straight into the ending bounce)
-    bounce(40, 1, 70, 30, 15)                        # ending: half-time bounces
-    bounce(42, -1, 70, 30, 15)
-    add(44, "happy", l=100, r=20, yaw=0, pitch=15)     # one arm high, one low: freeze half a beat
-    add(44.5, l=100, r=20, yaw=0, pitch=15)
-    add(46, "neutral", l=0, r=0, yaw=0, pitch=0)     # together back to neutral
+    add(12, l=80, r=20, yaw=20, pitch=-6)            # the drop: two big swings, freeze, open up on the strong beat
+    add(13, l=30, r=80, yaw=-20, pitch=-6)
+    add(13.25, r=80, yaw=-20, pitch=-6)              # freeze a quarter beat (the left arm already rises to open up)
+    add(14, "surprised", l=95, r=95, yaw=0, pitch=18)
+    add(14.5, "excited")
+    add(15, l=45, r=45, pitch=0)
+    add(16, "wink", l=100, r=30, yaw=18, pitch=10)   # a wave, left -> right -> left; the head follows the high arm
+    add(16.5, pitch=-4)
+    add(17, l=30, r=100, yaw=-18, pitch=10)
+    add(17.5, pitch=-4)
+    add(18, l=100, r=30, yaw=18, pitch=10)
+    add(18.5, pitch=-4)
+    add(19, "happy", l=45, r=45, yaw=0, pitch=0)
+    add(20, l=100, r=20, yaw=0, pitch=15)            # one arm high, one low: freeze half a beat
+    add(20.5, l=100, r=20, yaw=0, pitch=15)
+    add(22, "neutral", l=0, r=0, yaw=0, pitch=0)     # together back to neutral, on the last strong beat
     return sorted(t, key=lambda f: f[0])
 
 
@@ -163,7 +147,9 @@ def dry_run(amp=1.0, out=print):
 def decode(path):
     """Music -> 16 kHz mono int16 (ffmpeg); b"" when there is none: the dance then runs on its clock alone."""
     try:
-        return subprocess.run(["ffmpeg", "-loglevel", "error", "-i", str(path), "-f", "s16le", "-ac", "1", "-ar", str(RATE), "-"],
+        end = beat_s(BEATS) + 0.3
+        return subprocess.run(["ffmpeg", "-loglevel", "error", "-i", str(path), "-t", f"{end:.2f}",
+                               "-af", f"afade=t=out:st={end - FADE_S:.2f}:d={FADE_S}", "-f", "s16le", "-ac", "1", "-ar", str(RATE), "-"],
                               check=True, capture_output=True).stdout
     except (OSError, subprocess.CalledProcessError):
         return b""
