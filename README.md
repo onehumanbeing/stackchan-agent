@@ -9,6 +9,7 @@ Firmware, CLI and a local agent that let an AI (Claude Code, Codex, or any OpenA
 - **CLI** (`./stackchan`): JSON in, JSON out, including camera and screen snapshots. Agent guide: `AGENTS.md`.
 - **Live page** (`./stackchan dash`): camera, face, a 3D twin, servo states, faults and the agent's thinking and steps in a browser; any machine on the LAN can open it.
 - **Agent** (`dash --llm-url ...`): each turn sends what it heard plus the camera frame to an LLM; the answer streams back as one primitive step per line (say, face, gesture, head, arm), executed as each line arrives. Gestures are keyframes in `cli/gestures.py`, so new moves need no firmware change.
+- **Expressions**: 24 expressions that morph into each other (`./stackchan face --list`). The eyes breathe, blink and glance on their own, and after 15 s without input it daydreams, yawns and eventually dozes off. The agent picks the expression for every sentence it says.
 - **Voice** (`dash --whisper-model ...`): say "Hey Grok" to wake it; it answers, looks up (and lifts its head a little when it is free), and replies through its own speaker. `--lang zh|en` picks the language it speaks; switch at runtime with `./stackchan agent lang zh|en`. Speech-to-text is whisper.cpp, text-to-speech is Kokoro (both run locally).
 - **Episodes**: every agent turn is recorded (frame, state, heard, thinking, steps) under `~/.stackchan/episodes`; format in `docs/episodes.md`.
 

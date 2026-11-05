@@ -40,7 +40,8 @@ Several clients can be connected at once (USB + up to 4 WebSocket clients). Each
 | `head.torque` | `id`, `on` | – |
 | `stream.start` | `ids` (≤ 16), `hz` (1..100, default 20) | `hz`, `count` |
 | `stream.stop` | – | – |
-| `face.set` | `expression` (neutral happy sad angry doubt sleepy surprised listening thinking), `style`, `gaze: [v, h]` (−1..1), `mouth` (0..1), `blink`, `say` (caption, "" clears), `ms` (caption time, 0 = keep) | `expression`, `style` |
+| `face.set` | `expression` (see `face.expressions`), `style`, `gaze: [v, h]` (−1..1), `mouth` (0..1), `blink`, `say` (caption, "" clears), `ms` (caption time, 0 = keep), `idle` (daydream on its own after 15 s without input; default true) | `expression`, `style`, `idle` (daydreaming now) |
+| `face.expressions` | – | `expressions`: neutral happy excited love shy wink proud smug sad cry angry doubt curious surprised scared dizzy sleepy sigh bored listening thinking daydream yawn doze. Expressions morph into each other; the eyes breathe, blink and glance on their own. |
 | `face.styles` | – | `styles` (names) |
 | `face.snap` | – | `jpeg` (base64, what the screen shows), `bytes` |
 | `camera.snap` | `quality` (10..95) | `jpeg` (base64, 320 × 240), `bytes`, `seq` |

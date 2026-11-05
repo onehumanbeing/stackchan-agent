@@ -34,8 +34,9 @@
   .label { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:10px 0 4px; }
   .heard { font-size:16px; min-height:22px; }
   .heard .say { display:block; color:var(--muted); font-size:14px; margin-top:4px; }
-  .think { font:12px/1.5 ui-monospace, Menlo, monospace; color:#b9b9b9; max-height:140px; overflow:auto; white-space:pre-wrap; }
-  .steps { margin:0; padding-left:20px; font:13px/1.6 ui-monospace, Menlo, monospace; }
+  .think { font:13px/1.55 -apple-system, "SF Pro Text", "PingFang SC", sans-serif; color:#b9b9b9; max-height:140px; overflow:auto; white-space:pre-wrap; }
+  .steps { margin:0; padding-left:22px; font-size:14px; line-height:1.75; }
+  .chip { display:inline-block; padding:0 8px; margin:1px 0; border:1px solid var(--line); border-radius:99px; color:var(--fg); font:13px/1.6 -apple-system, sans-serif; }
   .steps li.run { color:var(--warn); } .steps li.bad { color:var(--bad); } .steps .ms { color:var(--muted); }
   .pill.busy { color:var(--warn); border-color:#5d4a26; }
   .twin-panel { grid-column:1; }
@@ -92,17 +93,43 @@
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+// Steps and the model's thinking are shown as icon + plain words, not JSON.
+const FACE = {neutral:"🙂", happy:"😊", excited:"🤩", love:"😍", shy:"😳", wink:"😉", proud:"😌", smug:"😏", sad:"😢",
+  cry:"😭", angry:"😠", doubt:"🤨", curious:"🧐", surprised:"😮", scared:"😱", dizzy:"😵‍💫", sleepy:"😪", sigh:"😮‍💨",
+  bored:"😑", listening:"👂", thinking:"🤔", daydream:"💭", yawn:"🥱", doze:"😴"};
+const GESTURE = {wave:"👋", nod:"🙆", shake:"🙅"};
+function describe(a) {
+  const quick = a.ms ? ` <span class="ms">${a.ms} ms</span>` : "";
+  if (a.say != null) return `${a.face ? FACE[a.face] || "🙂" : "💬"} “${esc(a.say)}”`;
+  if (a.do === "face") return `${FACE[a.expression] || "🙂"} ${esc(a.expression)}${a.ms ? " (briefly)" : ""}`;
+  if (a.do === "gesture") return `${GESTURE[a.name] || "🤖"} ${esc(a.name)}${a.times > 1 ? " ×" + a.times : ""}`;
+  if (a.do === "head") {
+    const y = +a.yaw || 0, p = +a.pitch || 0;
+    const dir = [y && (y > 0 ? "left " : "right ") + Math.abs(y) + "°", p && (p > 0 ? "up " : "down ") + Math.abs(p) + "°"].filter(Boolean).join(", ");
+    return `🤖 head ${dir || "straight ahead"}${quick}`;
+  }
+  if (a.do === "arm") return `💪 ${esc(a.side)} arm ${+a.deg ? "↑ " + a.deg + "°" : "down"}${quick}`;
+  if (a.do === "wait") return `⏳ wait ${a.s ?? 1} s`;
+  return esc(JSON.stringify(a));
+}
 function step(x) {
-  const a = x.act || {}, name = a.say != null ? "say" : a.do, args = Object.entries(a).filter(([k]) => k !== "do" && k !== "say").map(([k, v]) => `${k}=${v}`).join(" ");
-  const cls = x.ms == null ? "run" : (x.ok ? "" : "bad"), mark = x.ms == null ? "…" : (x.ok ? "✓" : "✗ " + esc(x.error || ""));
-  return `<li class="${cls}">${esc(name)} ${esc(a.say != null ? "“" + a.say + "”" : args)} ${mark} <span class="ms">${x.ms != null ? x.ms + " ms" : ""}</span></li>`;
+  const a = x.act || {}, cls = x.ms == null ? "run" : (x.ok ? "" : "bad");
+  const mark = a.skipped ? `<span class="ms">skipped</span>` : x.ms == null ? "…" : (x.ok ? "✓" : "✗ " + esc(x.error || ""));
+  return `<li class="${cls}">${describe(a)} ${mark}</li>`;
+}
+function prettyThinking(text) {     // step-like JSON in the thinking becomes the same icon + words
+  return esc(text).replace(/\{[^{}\n]*\}|-?\s*&quot;do&quot;:[^\n]*/g, m => {
+    const raw = m.replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/^-?\s*/, "").replace(/\s*\(.*\)\s*$/, "");
+    try { return `<span class="chip">${describe(JSON.parse(raw.startsWith("{") ? raw : "{" + raw + "}"))}</span>`; }
+    catch { return m; }
+  });
 }
 function renderAgent(g) {
   if (!g) return;
   $("agstat").textContent = g.status; $("agstat").className = "pill " + (g.status === "off" ? "" : g.status === "idle" ? "ok" : "busy");
   $("heard").innerHTML = g.heard ? `“${esc(g.heard)}”` + (g.say ? `<span class="say">${esc(g.say)}</span>` : "") : `<span class="empty">waiting for “Hey Grok”</span>`;
   const t = $("think"), stick = t.scrollTop + t.clientHeight >= t.scrollHeight - 4;
-  t.textContent = g.thinking || "–"; if (stick) t.scrollTop = t.scrollHeight;
+  t.innerHTML = g.thinking ? prettyThinking(g.thinking) : "–"; if (stick) t.scrollTop = t.scrollHeight;
   $("steps").innerHTML = (g.steps || []).map(step).join("");
 }
 function render(s) {
@@ -132,14 +159,16 @@ function render(s) {
 const es = new EventSource("/events");
 es.onmessage = e => render(JSON.parse(e.data));
 es.onerror = () => { $("link").textContent = "dashboard offline"; $("link").className = "pill bad"; };
-setInterval(() => { $("faceimg").src = "/face.jpg?" + Date.now(); }, 1000);
-// Camera: fetch the newest frame, show it, repeat.  Unlike an MJPEG stream this recovers by itself when the dashboard restarts.
-(function cam() {
+// Camera and face: fetch the newest frame, show it once it has loaded, repeat.  A failed fetch keeps the last
+// good frame (no broken image) and retries, so the page recovers by itself when the dashboard restarts.
+function poll(id, url, every) {
   const i = new Image();
-  i.onload = () => { $("camimg").src = i.src; setTimeout(cam, 120); };
-  i.onerror = () => setTimeout(cam, 1000);
-  i.src = "/camera.jpg?" + Date.now();
-})();
+  i.onload = () => { $(id).src = i.src; setTimeout(() => poll(id, url, every), every); };
+  i.onerror = () => setTimeout(() => poll(id, url, every), 1000);
+  i.src = url + "?" + Date.now();
+}
+poll("camimg", "/camera.jpg", 120);
+poll("faceimg", "/face.jpg", 500);
 </script>
 <script type="importmap">{"imports": {"three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>

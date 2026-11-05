@@ -155,11 +155,13 @@ class Voice(threading.Thread):
         pcm = self._pcm(text) if text in HEARD.values() else self.tts(text)
         prev, self.mode = self.mode, "busy"
         self.robot.send_audio(pcm)
+        self.robot.request("face.set", mouth=0.7)          # the eyes bob while it talks
         time.sleep(len(pcm) / (2 * RATE) + 0.3)
         for _ in range(30):                      # until the robot's queue is empty
             if not self.robot.request("speaker.status").get("playing"):
                 break
             time.sleep(0.1)
+        self.robot.request("face.set", mouth=0)
         self.mode = prev if prev != "busy" else "idle"
         self.deaf_until = time.monotonic() + 0.4
         self._mic(True)
@@ -184,11 +186,11 @@ class Voice(threading.Thread):
             text = self.stt.transcribe(pcm, self.agent.lang)
             if not text or text.startswith("["):  # [BLANK_AUDIO], [Music] ...
                 continue
-            self.agent._pub(heard=text)
             if self.mode == "idle":
                 m = self.wake.search(text)
                 if not m:
                     continue
+                self.agent._pub(heard=text)          # only what it reacts to, not every noise
                 rest = text[m.end():].strip(" ,.!?")
                 self._wake()
                 if not wordy(rest):

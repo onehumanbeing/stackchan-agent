@@ -163,8 +163,10 @@ def main(argv=None):
     p.add_argument("id", type=int)
     p.add_argument("lo", type=float, nargs="?")
     p.add_argument("hi", type=float, nargs="?")
-    p = sub.add_parser("face", help="expression: neutral happy sad angry doubt sleepy")
+    p = sub.add_parser("face", help="set an expression; `face --list` lists them, `face demo` plays them all")
     p.add_argument("expression", nargs="?")
+    p.add_argument("--list", action="store_true")
+    p.add_argument("--idle", choices=["on", "off"], help="daydream on its own after 15 s without input")
     p.add_argument("--say")
     p.add_argument("--ms", type=int, default=0)
     p.add_argument("--gaze", type=float, nargs=2, metavar=("V", "H"))
@@ -274,8 +276,18 @@ def main(argv=None):
         elif a.cmd == "limits":
             args = {"lo_deg": a.lo, "hi_deg": a.hi} if a.hi is not None else {}
             out(rq("servo.limits", id=a.id, **args))
+        elif a.cmd == "face" and a.list:
+            out(rq("face.expressions"))
+        elif a.cmd == "face" and a.expression == "demo":
+            for e in rq("face.expressions")["expressions"]:
+                rq("face.set", expression=e, say=e, ms=2200)
+                out({"expression": e})
+                time.sleep(2.5)
+            out(rq("face.set", expression="neutral", say=""))
         elif a.cmd == "face":
             args = {k: v for k, v in {"expression": a.expression, "say": a.say, "gaze": a.gaze, "mouth": a.mouth}.items() if v is not None}
+            if a.idle:
+                args["idle"] = a.idle == "on"
             out(rq("face.set", ms=a.ms, **args))
         elif a.cmd == "stream":
             rq("stream.start", ids=parse_ids(a.ids), hz=a.hz)

@@ -4,14 +4,18 @@
 #pragma once
 #include <M5GFX.h>
 
+#include "face_lib.h"
+
 namespace face {
 
 struct Look {
-  const char *expression;   // neutral happy sad angry doubt sleepy surprised
-  float gaze_v, gaze_h;     // -1..1 (smoothed)
+  const char *expression;   // name, see face_lib.cpp
+  float gaze_v, gaze_h;     // -1..1 (smoothed, expression bias and glances included)
   float open;               // eye openness 0..1 (blinks included)
   float mouth;              // 0..1, e.g. while speaking
   uint32_t t;               // ms
+  const Shape *shape;       // blended eye parameters of the current expression
+  float dx, dy;             // whole-face offset: breathing, hops, trembling (px)
 };
 
 struct Style {

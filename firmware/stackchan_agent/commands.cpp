@@ -232,10 +232,13 @@ const char *run(int ch, const String &cmd, JsonVariantConst a, JsonObject r) {
     if (a["gaze"].is<JsonArrayConst>()) face::gaze(a["gaze"][0] | 0.0f, a["gaze"][1] | 0.0f);
     if (!a["mouth"].isNull()) face::mouth(a["mouth"] | 0.0f);
     if (!a["say"].isNull()) face::say(a["say"].as<String>(), a["ms"] | 0);
-    r["expression"] = face::expression(), r["style"] = face::style();
+    if (!a["idle"].isNull()) face::setIdle(a["idle"] | true);
+    face::touch();
+    r["expression"] = face::expression(), r["style"] = face::style(), r["idle"] = face::idle();
     return nullptr;
   }
   if (cmd == "face.styles") { r["styles"] = serialized(face::styleNames()); return nullptr; }
+  if (cmd == "face.expressions") { r["expressions"] = serialized(face::expressionNames()); return nullptr; }
   if (cmd == "face.snap") {
     size_t n = 0;
     uint8_t *jpg = face::snapJpeg(&n);

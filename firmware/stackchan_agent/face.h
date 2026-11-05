@@ -7,7 +7,10 @@ namespace face {
 
 void begin();
 void loop();                                    // clears timed balloons
-bool setExpression(const String &name);         // neutral happy sad angry doubt sleepy surprised listening thinking
+bool setExpression(const String &name);         // any name in face_lib.cpp (face.expressions lists them)
+void setIdle(bool on);                          // daydream on its own after 15 s without input (default on)
+bool idle();                                    // daydreaming right now
+void touch();                                   // counts as input: postpones daydreaming
 bool setStyle(const String &name);
 void gaze(float vertical, float horizontal);    // -1..1; idle glances resume after 5 s
 void mouth(float open);                         // 0..1
@@ -16,6 +19,7 @@ void blink();
 const char *expression();
 const char *style();
 String styleNames();                            // JSON array
+String expressionNames();                       // JSON array (face_lib.cpp)
 uint8_t *snapJpeg(size_t *len);                 // the current frame as JPEG; caller frees
 
 }  // namespace face
