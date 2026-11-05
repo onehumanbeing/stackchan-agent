@@ -5,7 +5,7 @@
       "joint": "ls",
       "zero": 34.7,
       "sign": 1,
-      "up": -1
+      "up": 1
     },
     "2": {
       "joint": "le",
