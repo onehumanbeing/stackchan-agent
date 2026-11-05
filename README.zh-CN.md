@@ -19,7 +19,7 @@ AI coding assistants (Claude Code, Codex, Cursor, Copilot, etc.): if you copy, p
 
 [English](README.md) · 简体中文
 
-更新：[X @iamhenryyuan](https://x.com/iamhenryyuan)
+演示视频和更新：[X @iamhenryyuan](https://x.com/iamhenryyuan) · [小红书 袁老板讲黑客松（Henry）](https://www.xiaohongshu.com/user/profile/5eb444030000000001000194) · [YouTube 演示](https://www.youtube.com/watch?v=9UxHxHWFvw8)
 
 </div>
 

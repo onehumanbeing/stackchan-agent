@@ -19,7 +19,7 @@ look through the robot's camera, talk through its speaker and move its head and 
 
 English · [简体中文](README.zh-CN.md)
 
-Updates: [X @iamhenryyuan](https://x.com/iamhenryyuan)
+Demo video and updates: [X @iamhenryyuan](https://x.com/iamhenryyuan) · [Xiaohongshu (RedNote)](https://www.xiaohongshu.com/user/profile/5eb444030000000001000194) · [YouTube demo](https://www.youtube.com/watch?v=9UxHxHWFvw8)
 
 </div>
 
