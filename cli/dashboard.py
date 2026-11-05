@@ -47,6 +47,10 @@ class Robot(threading.Thread):
         for i in range(0, len(pcm), 4096):
             self.outbox.put((None, b"S" + pcm[i:i + 4096], None))
 
+    def fire(self, cmd, **args):
+        """Send a command without waiting for its reply (timed sequences such as the dance)."""
+        self.outbox.put((cmd, args, None))
+
     def request(self, cmd, timeout=5.0, **args):
         """Thread-safe command over the shared connection; returns the result or raises RuntimeError."""
         reply = Reply()
@@ -212,6 +216,9 @@ def make_handler(robot, agent=None):
                 if q.get("say"):
                     agent.hear(q["say"])
                 self._send(json.dumps({"ok": True, **agent.view}).encode(), "application/json")
+            elif path == "/api/dance":
+                q = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
+                self._send(json.dumps(dance_api(robot, agent, q)).encode(), "application/json")
             elif path == "/api/body":
                 body = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p).get("set")
                 if body not in ("simple", "full"):
@@ -264,6 +271,38 @@ def make_handler(robot, agent=None):
                 pass
 
     return Handler
+
+
+DANCING = {}
+
+
+def dance_api(robot, agent, q):
+    """Start (amp, loop) or stop the default dance.  The agent and voice are paused while it runs."""
+    import dance
+    current = DANCING.get("dance")
+    if q.get("stop"):
+        if current:
+            current.stop.set()
+        return {"ok": True, "stopped": bool(current)}
+    if current and current.thread.is_alive():
+        return {"ok": False, "error": "already dancing"}
+    if agent and not agent.idle.is_set():
+        return {"ok": False, "error": "the agent is busy; try again when it is idle"}
+    d = dance.Dance(robot, robot.snapshot().get("calibration", {}), float(q.get("amp", 1)), int(q.get("loop", 1)))
+    was_on = agent.on if agent else False
+
+    def go():
+        if agent:
+            agent.switch(False)
+        try:
+            d.run()
+        finally:
+            if agent and was_on:
+                agent.switch(True)
+    d.thread = threading.Thread(target=go, daemon=True)
+    DANCING["dance"] = d
+    d.thread.start()
+    return {"ok": True, "dancing": True, "amp": d.amp, "loops": d.loops, "seconds": round(dance.beat_s(dance.BEATS) * d.loops, 1)}
 
 
 def serve(host, ids, hz, fps, listen, port, llm=None, qr=None):

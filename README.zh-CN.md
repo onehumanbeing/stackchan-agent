@@ -35,6 +35,7 @@ AI coding assistants (Claude Code, Codex, Cursor, Copilot, etc.): if you copy, p
 - [在编程 agent 中使用](#在编程-agent-中使用)
 - [Agent](#agent)
 - [表情](#表情)
+- [舞蹈](#舞蹈)
 - [语音](#语音)
 - [数据采集（Episodes）](#数据采集episodes)
 - [项目结构](#项目结构)
@@ -167,6 +168,23 @@ surprised、scared、dizzy、sleepy、sigh、bored、listening、thinking、dayd
 添加新风格：在新的 `.cpp` 里写 `void drawMine(LGFX_Sprite &canvas, const face::Look &look)`，把 `{"mine", drawMine}`
 加到 `face_styles.cpp` 的 `STYLES`，烧录后用 `./stackchan raw face.set '{"style":"mine"}'` 选择。默认风格 `eyes` 只有两只眼睛。
 表情定义在 `face_lib.cpp`。
+
+## 舞蹈
+
+一段固定、每次都一样的 20 秒舞蹈，配乐由机器人自己的喇叭播放。全程不经过模型，只能由 CLI 启动（agent 不能触发）。
+所有姿态都落在同一个时钟的拍点上：`beat = (now - start - MUSIC_OFFSET_S) * BPM / 60`，`start` 是机器人开始出声的时刻；
+没有音乐文件时，舞蹈照样按同一时钟跳完。
+
+```sh
+./stackchan dance --dry-run      # 打印时间轴；检查限幅、手臂速度、结尾回到中立位（不需要机器人）
+./stackchan dance --amp 0.5      # 第一次实跑：幅度减半，速度也减半
+./stackchan dance                # 完整版；--loop 3 无缝循环
+./stackchan dance stop           # 急停：停音乐，舵机缓慢回中立位
+```
+
+它通过正在运行的 `dash` 执行，跳舞期间暂停 agent 和语音。编舞、节拍（`BPM`、`MUSIC_OFFSET_S` = 第一拍、`BEATS`）、
+限幅、手臂速度和音量都在 `cli/dance.py` 顶部。音乐不在仓库里：把音频放到 `~/.cache/stackchan-agent/dance.mp3`；
+换歌时改成新歌的 BPM 和第一拍，再用 `--dry-run` 检查。
 
 ## 语音
 

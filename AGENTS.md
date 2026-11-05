@@ -35,6 +35,7 @@ With a running `dash` that has an agent (`--llm-url`):
 ./stackchan agent on | off
 ./stackchan agent lang zh | en                    # language it speaks and listens for
 ./stackchan view simple | full                    # 3D twin body variant
+./stackchan dance --dry-run | dance | dance stop   # the default dance: only when the user asks for it
 ```
 
 Protocol details (for writing your own client): `docs/protocol.md`.

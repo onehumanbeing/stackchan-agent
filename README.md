@@ -35,6 +35,7 @@ Updates: [X @iamhenryyuan](https://x.com/iamhenryyuan)
 - [Use from a coding agent](#use-from-a-coding-agent)
 - [Agent](#agent)
 - [Expressions](#expressions)
+- [Dance](#dance)
 - [Voice](#voice)
 - [Episodes](#episodes)
 - [Project layout](#project-layout)
@@ -173,6 +174,24 @@ into a 320 × 240 sprite. To add one: write `void drawMine(LGFX_Sprite &canvas, 
 `.cpp`, add `{"mine", drawMine}` to `STYLES` in `face_styles.cpp`, flash, then select it with
 `./stackchan raw face.set '{"style":"mine"}'`. The default style `eyes` is two eyes and nothing else.
 Expressions live in `face_lib.cpp`.
+
+## Dance
+
+A fixed, repeatable 20 s dance with its own music, played by the robot's speaker. No model is involved, and only the
+CLI starts it (the agent cannot). Poses sit on beats of one clock, `beat = (now - start - MUSIC_OFFSET_S) * BPM / 60`,
+where `start` is the moment the robot starts playing; if the music is missing, the dance runs on the same clock alone.
+
+```sh
+./stackchan dance --dry-run      # print the timeline; checks limits, arm speed and that it ends at neutral (no robot)
+./stackchan dance --amp 0.5      # first run: half amplitude, so half speed
+./stackchan dance                # full;  --loop 3 repeats it seamlessly
+./stackchan dance stop           # emergency stop: music off, servos ease back to neutral
+```
+
+It goes through a running `dash`, which pauses the agent and voice while it dances. The choreography, tempo
+(`BPM`, `MUSIC_OFFSET_S` = first beat, `BEATS`), limits, arm speed and volume are at the top of `cli/dance.py`.
+The music is not in the repository: put an audio file at `~/.cache/stackchan-agent/dance.mp3`; for another song,
+set its BPM and first beat, then check with `--dry-run`.
 
 ## Voice
 

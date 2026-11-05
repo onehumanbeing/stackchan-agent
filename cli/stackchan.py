@@ -216,6 +216,12 @@ def main(argv=None):
                    help="how much the model reasons before acting: low (fast, default), high, off (fastest)")
     p.add_argument("--lang", choices=["zh", "en"], default=os.environ.get("STACKCHAN_LANG", "en"),
                    help="language the agent speaks; switch at runtime with `stackchan agent lang zh|en`")
+    p = sub.add_parser("dance", help="the default dance with its music, through a running dash; `dance stop` = emergency stop")
+    p.add_argument("action", nargs="?", choices=["stop"])
+    p.add_argument("--dry-run", action="store_true", help="print the timeline and check limits; no robot")
+    p.add_argument("--amp", type=float, default=1.0, help="amplitude 0..1 (0.5 for a first careful run)")
+    p.add_argument("--loop", type=int, default=1)
+    p.add_argument("--dash", default="http://127.0.0.1:8765")
     p = sub.add_parser("agent", help="control the agent of a running dash: on | off | say TEXT | lang zh|en")
     p.add_argument("action", choices=["on", "off", "say", "status", "lang"])
     p.add_argument("text", nargs="*")
@@ -231,11 +237,16 @@ def main(argv=None):
     a = ap.parse_args(argv)
 
     out = lambda obj: print(json.dumps(obj, ensure_ascii=False), flush=True)   # noqa: E731
-    if a.cmd in ("view", "agent"):     # these talk to a running `dash`, not to the robot
+    if a.cmd == "dance" and a.dry_run:
+        import dance
+        return 0 if dance.dry_run(a.amp) else 1
+    if a.cmd in ("view", "agent", "dance"):     # these talk to a running `dash`, not to the robot
         import urllib.parse
         import urllib.request
         if a.cmd == "view":
             q = f"/api/body?set={a.body}"
+        elif a.cmd == "dance":
+            q = "/api/dance?stop=1" if a.action == "stop" else f"/api/dance?amp={a.amp}&loop={a.loop}"
         else:
             q = "/api/agent?" + {"on": "on=1", "off": "on=0", "status": "", "lang": "lang=" + "".join(a.text)}.get(
                 a.action, "say=" + urllib.parse.quote_plus(" ".join(a.text)))
