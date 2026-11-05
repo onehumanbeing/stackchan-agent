@@ -173,6 +173,8 @@ def main(argv=None):
     p.add_argument("--ids", required=True, help="e.g. 1,2,3")
     p.add_argument("--hz", type=int, default=20)
     p.add_argument("--seconds", type=float, default=0, help="0 = until Ctrl-C")
+    p = sub.add_parser("gesture", help="play a gesture (wave, nod, shake): keyframes sent as primitive moves")
+    p.add_argument("name")
     p = sub.add_parser("selftest", help="move each servo a little and check it got there")
     p.add_argument("--ids", help="default: every id on the bus")
     p.add_argument("--deg", type=float, default=10.0)
@@ -245,6 +247,11 @@ def main(argv=None):
                 if m and "ev" in m:
                     out(m)
             rq("stream.stop")
+        elif a.cmd == "gesture":
+            from gestures import GESTURES, play
+            if a.name not in GESTURES:
+                raise RuntimeError(f"unknown gesture {a.name!r}; known: {', '.join(GESTURES)}")
+            out(play(link, a.name))
         elif a.cmd == "selftest":
             ids = parse_ids(a.ids) if a.ids else rq("bus.scan", timeout=10)["ids"]
             out(selftest(link, ids, a.deg))

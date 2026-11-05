@@ -35,6 +35,9 @@ Several clients can be connected at once (USB + up to 4 WebSocket clients). Each
 | `servo.torque_limit` | `id`, `permille` (0..1000) | – (RAM: resets at power-off) |
 | `servo.set_id` | `id`, `new_id` | – (refused if `new_id` already answers) |
 | `servo.limits` | `id`, optional `lo_deg` + `hi_deg` | `lo_deg`, `hi_deg` (soft limits, saved in NVS; moves are clamped to them) |
+| `head.read` | – | `servos: [{id, raw, deg}]` (StackChan body head servos: 1 = yaw, 2 = pitch; SCS0009, raw 0..1023 over 300°) |
+| `head.move` | `id`, `deg` or `raw`, `ms` (travel time, 400) | `raw` |
+| `head.torque` | `id`, `on` | – |
 | `stream.start` | `ids` (≤ 16), `hz` (1..100, default 20) | `hz`, `count` |
 | `stream.stop` | – | – |
 | `face.set` | `expression` (neutral happy sad angry doubt sleepy surprised), `style`, `gaze: [v, h]` (−1..1), `mouth` (0..1), `blink`, `say` (caption, "" clears), `ms` (caption time, 0 = keep) | `expression`, `style` |

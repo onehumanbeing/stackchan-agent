@@ -26,6 +26,7 @@ struct State {       // one read of registers 56..66
 
 class Bus {
  public:
+  explicit Bus(HardwareSerial &port = Serial1) : port_(port) {}
   // Try `baud` on rx/tx; true if any of ids 1..probe_max answers a ping.
   bool begin(int rx, int tx, uint32_t baud, int probe_max = 12);
   void end();
@@ -54,7 +55,7 @@ class Bus {
  private:
   void send(uint8_t id, uint8_t instr, const uint8_t *params, uint8_t n);
   int reply(uint8_t id, uint8_t *params, uint8_t n, uint8_t *err);
-  HardwareSerial &port_ = Serial1;
+  HardwareSerial &port_;
   bool ok_ = false;
   int rx_ = -1, tx_ = -1;
   uint32_t baud_ = 0, errors_ = 0;

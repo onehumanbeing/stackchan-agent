@@ -11,6 +11,7 @@ Use the CLI: every command prints one JSON object (or NDJSON lines for `stream`)
 ./stackchan torque 1 off               # limp (lets a person pose the arm)
 ./stackchan stream --ids 1,5 --hz 20 --seconds 3
 ./stackchan face happy --say "hi" --ms 3000
+./stackchan gesture wave                # wave / nod / shake: keyframes in cli/gestures.py, add your own there
 ./stackchan status                     # info + every servo, one JSON: is it working?
 ./stackchan snap -o /tmp/cam.jpg       # what the camera sees (open the file to look)
 ./stackchan face-snap -o /tmp/face.jpg # what the screen shows

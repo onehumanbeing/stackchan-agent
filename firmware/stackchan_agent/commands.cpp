@@ -14,11 +14,14 @@ namespace commands {
 
 namespace {
 sts::Bus bus;
+// M5Stack StackChan body: two SCS0009 head servos (1 = yaw, 2 = pitch) on their own bus, GPIO7 RX / GPIO6 TX.
+// Same packets as STS, but registers are big endian and positions are 0..1023 over 300 degrees.
+sts::Bus head(Serial2);
+constexpr int HEAD_RX = 7, HEAD_TX = 6;
 
 struct Pins { int rx, tx; const char *port; };
 constexpr Pins CANDIDATES[] = {   // CoreS3 Grove ports, both TX/RX orders
   {18, 17, "C"}, {17, 18, "C"}, {1, 2, "A"}, {2, 1, "A"}, {8, 9, "B"}, {9, 8, "B"},
-  {7, 6, "body"}, {6, 7, "body"},   // M5Stack StackChan body: internal head-servo bus
 };
 const char *bus_port = "";
 
@@ -175,6 +178,33 @@ const char *run(int ch, const String &cmd, JsonVariantConst a, JsonObject r) {
     return nullptr;
   }
 
+  if (cmd == "head.read") {   // raw 0..1023, deg = (raw - 512) * 300 / 1024
+    JsonArray out = r["servos"].to<JsonArray>();
+    for (int hid = 1; hid <= 2; hid++) {
+      uint8_t b[2];
+      if (!head.read(hid, sts::PRESENT_POS, b, 2)) continue;
+      int raw = b[0] << 8 | b[1];
+      JsonObject o = out.add<JsonObject>();
+      o["id"] = hid, o["raw"] = raw, o["deg"] = roundf((raw - 512) * 3000.0f / 1024) / 10;
+    }
+    return nullptr;
+  }
+  if (cmd == "head.move") {   // id (1 yaw, 2 pitch), raw (0..1023) or deg, ms (travel time)
+    int hid = a["id"] | 0;
+    if (hid < 1 || hid > 2) return "id must be 1 (yaw) or 2 (pitch)";
+    int raw = a["raw"].is<int>() ? a["raw"].as<int>() : 512 + lroundf((a["deg"] | 0.0f) * 1024 / 300);
+    raw = constrain(raw, 0, 1023);
+    int ms = a["ms"] | 400;
+    uint8_t d[6] = {(uint8_t)(raw >> 8), (uint8_t)raw, (uint8_t)(ms >> 8), (uint8_t)ms, 0, 0};
+    if (!head.write8(hid, sts::TORQUE_ENABLE, 1) || !head.write(hid, sts::GOAL_POS, d, 6)) return "no reply";
+    r["raw"] = raw;
+    return nullptr;
+  }
+  if (cmd == "head.torque") {
+    int hid = a["id"] | 0;
+    if (!head.write8(hid, sts::TORQUE_ENABLE, a["on"] | false ? 1 : 0)) return "no reply";
+    return nullptr;
+  }
   if (cmd == "stream.start") {
     Stream &s = streamFor(ch);
     s.hz = constrain(a["hz"] | 20, 1, 100), s.n = 0, s.next = millis(), s.bad = 0;
@@ -254,6 +284,7 @@ const char *run(int ch, const String &cmd, JsonVariantConst a, JsonObject r) {
 
 void begin() {
   bool ok = detectBus();
+  head.begin(HEAD_RX, HEAD_TX, 1000000, 2);
   face::say(ok ? String("bus ") + bus_port + " ok" : "bus not found", 4000);
 }
 
