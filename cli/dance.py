@@ -1,8 +1,9 @@
 """The default dance (10 s): a fixed choreography on a beat clock, with the music played by the robot's own speaker.
 
-No model, no camera: the same 10 s every time.  Started by the CLI or by saying "music" after the wake word.  Every pose sits on a beat of the timeline below;
-the move toward it starts at the previous pose and takes exactly the time between them, so poses land on
-the beat.  Arms use the STS speed + acceleration ramp (soft start and stop), the head its travel time.
+No model, no camera: the same 10 s every time.  Started by the CLI or by saying "music" / "dance" after the wake word.
+Every pose sits on a beat of the timeline below.  Each joint follows a smooth curve through its poses
+(motion.py), streamed STREAM_HZ times a second, so it keeps moving through a pose instead of braking at every
+beat; a repeated pose is a hold.  The head follows the arms a moment later, like a body leading the head.
 
   ./stackchan dance --dry-run        print the timeline and check limits, no robot needed
   ./stackchan dance --amp 0.5        half amplitude (and so half speed): a first, careful run
@@ -13,6 +14,8 @@ To use another song: set BPM and MUSIC_OFFSET_S (time of the first beat) for it,
 """
 import subprocess
 import threading
+
+from motion import Curve
 import time
 from pathlib import Path
 
@@ -27,6 +30,9 @@ ARM_MAX, YAW_MAX, PITCH_MAX = 100, 28, 28    # deg from neutral; arms: 0 = down,
 ARM_SPEED_MAX = 3200         # STS steps/s (~280 deg/s)
 HEAD_SNAP_S = 1.0            # longest head travel; >= one beat = the head glides like the arms (0.12 snapped: too jerky)
 ARM_ACC = 200                # x100 steps/s^2: the soft start / stop of every arm move (60 was too soft: arms fell behind the beat)
+STREAM_HZ = 25               # curve samples sent per second (arms: one sync_move, head: two head.move)
+ARM_LEAD_S = 0.06            # arms aim this far ahead: the servo trails its goal
+HEAD_LAG_S = 0.05            # the head lands this long after the arms (follow-through)
 ARMS = {"l": 1, "r": 5}      # servo ids: left, right shoulder
 RATE = 16000
 
@@ -41,6 +47,8 @@ def _timeline():
     # high-arm side (the hips).  Head and arms are set in the same keyframe, so they start and land together.
     def ears(b, side, hi=95, lo=60, yaw=22, pitch=14):
         add(b, l=hi if side > 0 else lo, r=lo if side > 0 else hi, yaw=yaw * side, pitch=pitch)
+        if b + 1 < BEATS:                            # through the middle on the "and": the head dips, so it swings in an arc
+            add(b + 0.5, yaw=0, pitch=pitch - 12)
 
     add(0, "excited", l=50, r=50, yaw=0, pitch=8)    # 0-1: the arms come up into the ears
     add(1, l=95, r=95, pitch=18)
@@ -55,8 +63,8 @@ def _timeline():
     add(20, "happy", l=95, r=60, yaw=22, pitch=14)   # 20-23: the move to the end
     for b in range(21, 24):
         ears(b, 1 if b % 2 == 0 else -1)
-    add(24, "love", l=95, r=95, yaw=0, pitch=24)     # final pose: both ears up, looking up, held half a beat
-    add(24.5, l=95, r=95, yaw=0, pitch=24)
+    add(24, "love", l=95, r=95, yaw=0, pitch=24)     # final pose: both ears up, looking up, held a quarter beat
+    add(24.25, l=95, r=95, yaw=0, pitch=24)
     add(26, "neutral", l=0, r=0, yaw=0, pitch=0)     # back to neutral
     return sorted(t, key=lambda f: f[0])
 
@@ -107,6 +115,16 @@ def schedule(amp=1.0):
     return sorted(events, key=lambda e: e[1])
 
 
+def curves(amp=1.0):
+    """{joint: Curve over seconds}: each joint through the poses that set it; the head a little later."""
+    pts = {k: [] for k in LIMITS}
+    for b, p, _ in TIMELINE:
+        for k, v in p.items():
+            t = beat_s(b) + (0 if k in ARMS else HEAD_LAG_S)
+            pts[k].append((t, max(LIMITS[k][0], min(LIMITS[k][1], v * amp))))
+    return {k: Curve(v) for k, v in pts.items()}
+
+
 def check(amp=1.0):
     """Problems with the timeline (empty = fine): limits, arm speed, the end pose."""
     errs = []
@@ -119,8 +137,14 @@ def check(amp=1.0):
         lo, hi = LIMITS[k]
         if not lo <= v <= hi:
             errs.append(f"beat {b}: {k}={v} outside {lo}..{hi}")
-        if k in ARMS and arm_speed(abs(v - frm) * 4096 / 360, dur) is None:
-            errs.append(f"beat {b}: arm {k} {frm:.0f}->{v:.0f} in {dur:.2f} s is too fast (max {ARM_SPEED_MAX} steps/s, acc {ARM_ACC})")
+    cs, t = curves(amp), 0.0
+    while t < beat_s(BEATS):                       # the curves the arms really follow
+        for k in ARMS:
+            need = cs[k].speed(t) * 4096 / 360 * 1.2
+            if need > ARM_SPEED_MAX:
+                errs.append(f"{t:.2f} s: arm {k} curve needs {need:.0f} steps/s (max {ARM_SPEED_MAX})")
+        t += 0.02
+    errs = list(dict.fromkeys(errs))[:12]
     end = poses(amp)[-1][1]
     if any(end.values()):
         errs.append(f"does not end at neutral: {end}")
@@ -134,7 +158,7 @@ def dry_run(amp=1.0, out=print):
         out(f"{beat_s(b):7.2f} {b:6.2f} {pose['l']:6.0f} {pose['r']:6.0f} {pose['yaw']:5.0f} {pose['pitch']:6.0f}  {face or ''}")
     errs = check(amp)
     moves = sum(e[0] == "move" for e in schedule(amp))
-    out(f"check: ok ({moves} moves; limits, arm speed, ends at neutral)" if not errs else "check FAILED:\n  " + "\n  ".join(errs))
+    out(f"check: ok ({moves} keyframe moves; limits, arm curve speed, ends at neutral)" if not errs else "check FAILED:\n  " + "\n  ".join(errs))
     return not errs
 
 
@@ -209,19 +233,38 @@ class Dance:
         self.rest = b""
         start = self._start_music()
         threading.Thread(target=self._feed, args=(start,), daemon=True).start()
-        for e in schedule(self.amp):
-            while not self.stop.is_set() and time.monotonic() < start + e[1]:
-                time.sleep(min(0.005, max(0.0, start + e[1] - time.monotonic())))
-            if self.stop.is_set():
-                return
-            if e[0] == "face":
-                self.robot.fire("face.set", expression=e[2])
-            elif e[5] is not None:                       # (the first pose was reached before the music)
-                _, _, key, value, dur, frm, _ = e
-                cmd, args = self._command(key, value, dur, frm)
-                self.robot.fire(cmd, **args)
-        while not self.stop.is_set() and time.monotonic() < start + beat_s(BEATS) + 0.3:
-            time.sleep(0.01)
+        faces = [(beat_s(b), f) for b, _, f in TIMELINE if f]
+        cs, sent, period = curves(self.amp), {}, 1.0 / STREAM_HZ
+        tick = start
+        while not self.stop.is_set():
+            t = time.monotonic() - start
+            if t > beat_s(BEATS) + 0.3:
+                break
+            while faces and faces[0][0] <= t:
+                self.robot.fire("face.set", expression=faces.pop(0)[1])
+            self._stream(cs, t, period, sent)
+            tick += period
+            time.sleep(max(0.0, tick - time.monotonic()))
+
+    def _stream(self, cs, t, period, sent):
+        """Send each joint its curve value a moment ahead; skip joints that barely move."""
+        j, h = self.cal.get("joints", {}), self.cal.get("head", {})
+        targets, speed = [], 100
+        for k, sid in ARMS.items():
+            v = cs[k](t + ARM_LEAD_S)
+            if abs(v - sent.get(k, 1e9)) < 0.3:
+                continue
+            sent[k] = v
+            cal = j.get(str(sid), {})
+            targets.append({"id": sid, "deg": cal.get("zero", 0) + cal.get("up", 1) * v})
+            speed = max(speed, cs[k].speed(t + ARM_LEAD_S) * 4096 / 360 * 1.5 + 150)
+        if targets:
+            self.robot.fire("servo.sync_move", targets=targets, speed=int(min(ARM_SPEED_MAX, speed)), acc=ARM_ACC)
+        for k, hid in (("yaw", 1), ("pitch", 2)):
+            v = cs[k](t + period)
+            if abs(v - sent.get(k, 1e9)) >= 0.3:
+                sent[k] = v
+                self.robot.fire("head.move", id=hid, deg=h.get(f"{k}_zero", 0) + h.get(f"{k}_sign", 1) * v, ms=int(period * 1000) + 10)
 
     def neutral(self, stop=True):
         """Back to neutral, slowly; music off.  Used at the start, the end and by the emergency stop."""

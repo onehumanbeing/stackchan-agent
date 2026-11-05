@@ -54,3 +54,5 @@ Files: `shortarm.py` (parameters, kinematics, checks, servo profile), `run.py` (
 - This model found that `ARM_ACC = 60` made one-beat arm moves in the dance land late (about 0.5 s
   for 30° against 0.43 s per beat); the dance now uses `ARM_ACC = 200` and ramp-aware speeds. Not yet
   confirmed on the robot.
+- The dance now streams smooth curves (`cli/motion.py`, `STREAM_HZ`); `run.py dance` still replays it as
+  point-to-point keyframe moves, so it is pessimistic about speed and smoothness.
