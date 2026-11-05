@@ -237,12 +237,24 @@ class Voice(threading.Thread):
             if pitch is not None:
                 self.lifted = pitch
                 self.robot.request("head.move", id=2, deg=pitch + sign * LIFT_DEG, ms=250)
+            if self.agent.motion:
+                self._arms_home(s)
         self.say(HEARD.get(self.agent.lang, HEARD["en"]))
         self._listen(WAKE_S)
 
     def _listen(self, seconds):
         self.mode, self.listen_until = "listening", time.monotonic() + seconds
         self.agent._pub(status="listening")
+
+    def _arms_home(self, snapshot):
+        """Arms back to home (hanging down, calibration zeros), quickly: it is ready to listen."""
+        joints = snapshot.get("calibration", {}).get("joints", {})
+        for sid in ("1", "5"):
+            if sid in snapshot.get("servos", {}) and sid in joints:
+                try:
+                    self.robot.request("servo.move", id=int(sid), deg=joints[sid]["zero"], speed=2400, acc=60)
+                except (RuntimeError, TimeoutError):
+                    pass
 
     def _give_up(self):
         """No command in time (after the wake word or after an answer): back to waiting for the wake word."""
