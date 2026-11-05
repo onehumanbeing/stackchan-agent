@@ -51,5 +51,6 @@ Files: `shortarm.py` (parameters, kinematics, checks, servo profile), `run.py` (
   covers the head, the neck and the table.
 - The servo profile is the datasheet model; load, supply voltage, backlash and cable drag are not
   simulated.
-- Early result to confirm on the robot: with `ARM_ACC = 60` the model says many one-beat arm moves
-  in the dance arrive late (about 0.5 s for 30° against 0.43 s per beat).
+- This model found that `ARM_ACC = 60` made one-beat arm moves in the dance land late (about 0.5 s
+  for 30° against 0.43 s per beat); the dance now uses `ARM_ACC = 200` and ramp-aware speeds. Not yet
+  confirmed on the robot.

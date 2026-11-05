@@ -24,7 +24,7 @@ MUSIC = Path.home() / ".cache" / "stackchan-agent" / "dance.mp3"
 VOLUME = 200                 # speaker 0..255 (the agent uses 180)
 ARM_MAX, YAW_MAX, PITCH_MAX = 100, 28, 18    # deg from neutral; arms: 0 = down, toward the middle of travel
 ARM_SPEED_MAX = 3200         # STS steps/s (~280 deg/s)
-ARM_ACC = 60                 # x100 steps/s^2: the soft start / stop of every arm move
+ARM_ACC = 200                # x100 steps/s^2: the soft start / stop of every arm move (60 was too soft: arms fell behind the beat)
 ARMS = {"l": 1, "r": 5}      # servo ids: left, right shoulder
 RATE = 16000
 
@@ -66,7 +66,7 @@ def _timeline():
         bounce(b, 1 if b % 2 else -1)
     add(28, l=80, r=20, yaw=20, pitch=-6)            # the drop: two big swings, freeze, open up
     add(29, l=30, r=80, yaw=-20, pitch=-6)
-    add(29.25, l=30, r=80, yaw=-20, pitch=-6)        # freeze a quarter beat
+    add(29.25, r=80, yaw=-20, pitch=-6)              # freeze a quarter beat (the left arm already rises to open up)
     add(30, "surprised", l=95, r=95, yaw=0, pitch=18)
     add(30.5, "excited")
     add(31, l=45, r=45, pitch=0)
@@ -75,7 +75,7 @@ def _timeline():
     add(38, l=90, r=30, yaw=YAW_MAX, pitch=12)        # hit 5: a turn to one side, a little head shake there ...
     add(38.5, yaw=YAW_MAX - 12, pitch=6)
     add(39, l=90, r=30, yaw=YAW_MAX, pitch=12)
-    add(39.5, l=45, r=45, yaw=0, pitch=0)            # ... and back
+    add(39.5, yaw=0, pitch=0)                        # ... and back (the arms go straight into the ending bounce)
     bounce(40, 1, 70, 30, 15)                        # ending: half-time bounces
     bounce(42, -1, 70, 30, 15)
     add(44, "happy", l=100, r=20, yaw=0, pitch=15)     # one arm high, one low: freeze half a beat
@@ -86,6 +86,17 @@ def _timeline():
 
 TIMELINE = _timeline()
 LIMITS = {"l": (0, ARM_MAX), "r": (0, ARM_MAX), "yaw": (-YAW_MAX, YAW_MAX), "pitch": (-PITCH_MAX, PITCH_MAX)}
+
+
+def arm_speed(steps, dur):
+    """Cruise speed (steps/s) for a move of `steps` to land in `dur` s on the STS ramp (accelerate, cruise, brake),
+    with 10 % to spare; None when even ARM_SPEED_MAX cannot make it."""
+    a = ARM_ACC * 100
+    disc = (a * dur) ** 2 - 4 * a * steps
+    if disc < 0:
+        return None
+    v = (a * dur - disc ** 0.5) / 2 * 1.1
+    return v if v <= ARM_SPEED_MAX else None
 
 
 def beat_s(b):
@@ -130,9 +141,8 @@ def check(amp=1.0):
         lo, hi = LIMITS[k]
         if not lo <= v <= hi:
             errs.append(f"beat {b}: {k}={v} outside {lo}..{hi}")
-        need = abs(v - (frm or 0)) * 4096 / 360 / dur * 1.3
-        if k in ARMS and need > ARM_SPEED_MAX:
-            errs.append(f"beat {b}: arm {k} {frm:.0f}->{v:.0f} in {dur:.2f} s needs {need:.0f} steps/s (max {ARM_SPEED_MAX})")
+        if k in ARMS and arm_speed(abs(v - frm) * 4096 / 360, dur) is None:
+            errs.append(f"beat {b}: arm {k} {frm:.0f}->{v:.0f} in {dur:.2f} s is too fast (max {ARM_SPEED_MAX} steps/s, acc {ARM_ACC})")
     end = poses(amp)[-1][1]
     if any(end.values()):
         errs.append(f"does not end at neutral: {end}")
@@ -174,7 +184,7 @@ class Dance:
             zero = j.get(str(sid), {}).get("zero", 0)
             up = j.get(str(sid), {}).get("up", -1 if zero > 0 else 1)
             steps = abs(value - (frm or 0)) * 4096 / 360
-            speed = max(100, min(ARM_SPEED_MAX, int(steps / dur * 1.3))) if frm is not None else 600
+            speed = max(100, int(arm_speed(steps, dur) or ARM_SPEED_MAX)) if frm is not None else 600
             return "servo.move", dict(id=sid, deg=zero + up * value, speed=speed, acc=ARM_ACC)
         hid = 1 if key == "yaw" else 2
         return "head.move", dict(id=hid, deg=h.get(f"{key}_zero", 0) + h.get(f"{key}_sign", 1) * value, ms=int(dur * 1000))
