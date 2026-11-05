@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StackChan Live</title>
+<style>
+  :root { --bg:#0b0b0b; --panel:#151515; --line:#262626; --fg:#f2f2f2; --muted:#8a8a8a; --ok:#5ad17a; --bad:#ff6b5b; --warn:#f2b84b; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 -apple-system, "SF Pro Text", "PingFang SC", sans-serif; }
+  header { display:flex; align-items:center; gap:12px; padding:14px 20px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:16px; margin:0; letter-spacing:.02em; }
+  .pill { font-size:12px; padding:2px 10px; border-radius:99px; border:1px solid var(--line); color:var(--muted); }
+  .pill.ok { color:var(--ok); border-color:#2f5d3b; } .pill.bad { color:var(--bad); border-color:#6b2f29; }
+  main { display:grid; grid-template-columns: minmax(0,1.3fr) minmax(0,1fr); gap:16px; padding:16px 20px; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; padding:16px; } }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px; min-width:0; }
+  .panel h2 { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 10px; display:flex; justify-content:space-between; }
+  .media { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width: 520px) { .media { grid-template-columns:1fr; } }
+  .media img { width:100%; aspect-ratio:4/3; object-fit:cover; background:#000; border-radius:10px; display:block; }
+  table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+  th, td { text-align:right; padding:7px 6px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th { color:var(--muted); font-weight:500; font-size:12px; } th:first-child, td:first-child { text-align:left; }
+  .bar { height:6px; background:#222; border-radius:3px; position:relative; min-width:90px; }
+  .bar i { position:absolute; top:0; height:6px; width:3px; border-radius:2px; background:var(--fg); }
+  .bar b { position:absolute; left:50%; top:-2px; width:1px; height:10px; background:#444; }
+  .kv { display:grid; grid-template-columns:auto 1fr; gap:4px 14px; font-variant-numeric:tabular-nums; }
+  .kv span:nth-child(odd) { color:var(--muted); }
+  .log { font:12px/1.5 ui-monospace, Menlo, monospace; color:var(--muted); max-height:160px; overflow:auto; }
+  .empty { color:var(--muted); padding:8px 0; }
+  .hot { color:var(--warn); } .err { color:var(--bad); }
+  .stack { display:grid; gap:16px; align-content:start; }
+</style>
+</head>
+<body>
+<header>
+  <h1>StackChan</h1>
+  <span id="link" class="pill">connecting…</span>
+  <span id="cam" class="pill">camera –</span>
+  <span id="face" class="pill">face –</span>
+</header>
+<main>
+  <section class="panel">
+    <h2><span>Camera</span><span>Face</span></h2>
+    <div class="media">
+      <img id="camimg" src="/camera.mjpg" alt="camera">
+      <img id="faceimg" alt="face">
+    </div>
+  </section>
+  <div class="stack">
+    <section class="panel">
+      <h2><span>Servos</span><span id="t"></span></h2>
+      <table>
+        <thead><tr><th>ID</th><th>deg</th><th></th><th>load</th><th>V</th><th>°C</th></tr></thead>
+        <tbody id="servos"><tr><td colspan="6" class="empty">no servo data yet</td></tr></tbody>
+      </table>
+    </section>
+    <section class="panel">
+      <h2><span>Robot</span></h2>
+      <div class="kv" id="info"></div>
+    </section>
+    <section class="panel">
+      <h2><span>Faults</span></h2>
+      <div class="log" id="faults"><div class="empty">none</div></div>
+    </section>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+function render(s) {
+  $("link").textContent = s.connected ? "online" : ("offline" + (s.error ? " · " + s.error : ""));
+  $("link").className = "pill " + (s.connected ? "ok" : "bad");
+  $("cam").textContent = "camera " + (s.camera_fps ? s.camera_fps + " fps" : "–");
+  const info = s.info || {}, w = info.wifi || {}, b = info.bus || {};
+  $("face").textContent = "face " + (info.face || "–");
+  const ids = Object.keys(s.servos || {}).sort((a, b) => a - b);
+  $("servos").innerHTML = ids.length ? ids.map(id => {
+    const v = s.servos[id], pct = Math.max(0, Math.min(100, 50 + v.deg / 3.6));
+    return `<tr><td>${id}${v.moving ? " ·" : ""}</td><td>${v.deg.toFixed(1)}</td>
+      <td><div class="bar"><b></b><i style="left:calc(${pct}% - 1px)"></i></div></td>
+      <td>${(v.load / 10).toFixed(1)}%</td><td>${v.volt.toFixed(1)}</td>
+      <td class="${v.temp >= 60 ? "hot" : ""}">${v.temp}</td></tr>`;
+  }).join("") : `<tr><td colspan="6" class="empty">${b.ok === false ? "servo bus not found" : "no servo data yet"}</td></tr>`;
+  $("t").textContent = s.t ? (s.t / 1000).toFixed(1) + " s" : "";
+  const rows = [["firmware", info.fw], ["wifi", w.connected ? `${w.ssid} · ${w.ip} · ${w.rssi} dBm` : "offline"],
+    ["bus", b.ok ? `Grove ${b.port} · ${b.baud} baud · ${b.errors} errors` : "not found"],
+    ["uptime", info.uptime_s != null ? info.uptime_s + " s" : ""], ["link", s.via || ""]];
+  $("info").innerHTML = rows.map(([k, v]) => `<span>${k}</span><span>${esc(v)}</span>`).join("");
+  const f = s.faults || [];
+  $("faults").innerHTML = f.length ? f.slice().reverse().map(x => `<div class="${x.fault === "back" ? "" : "err"}">${x.at} · servo ${x.id} · ${esc(x.fault)}</div>`).join("") : `<div class="empty">none</div>`;
+}
+const es = new EventSource("/events");
+es.onmessage = e => render(JSON.parse(e.data));
+es.onerror = () => { $("link").textContent = "dashboard offline"; $("link").className = "pill bad"; };
+setInterval(() => { $("faceimg").src = "/face.jpg?" + Date.now(); }, 1000);
+$("camimg").onerror = () => setTimeout(() => { $("camimg").src = "/camera.mjpg?" + Date.now(); }, 2000);
+</script>
+</body>
+</html>

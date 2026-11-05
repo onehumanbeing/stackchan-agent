@@ -1,0 +1,6 @@
+build/
+cli/.venv/
+__pycache__/
+*.bin
+secrets*
+.DS_Store

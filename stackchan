@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# CLI entry point: ./stackchan --help   (first run: python3 -m venv cli/.venv && cli/.venv/bin/pip install -r cli/requirements.txt)
+here="$(cd "$(dirname "$0")" && pwd)"
+py="$here/cli/.venv/bin/python"
+[[ -x $py ]] || py=python3
+exec "$py" "$here/cli/stackchan.py" "$@"
