@@ -31,6 +31,10 @@
   .empty { color:var(--muted); padding:8px 0; }
   .hot { color:var(--warn); } .err { color:var(--bad); }
   .stack { display:grid; gap:16px; align-content:start; }
+  .twin-panel { grid-column:1; }
+  #twin { height:46vh; min-height:280px; border-radius:10px; overflow:hidden; background:#0e0e0e; }
+  .stack { grid-row:1 / span 2; grid-column:2; }
+  @media (max-width: 860px) { .stack, .twin-panel { grid-column:auto; grid-row:auto; } }
 </style>
 </head>
 <body>
@@ -47,6 +51,10 @@
       <img id="camimg" src="/camera.mjpg" alt="camera">
       <img id="faceimg" alt="face">
     </div>
+  </section>
+  <section class="panel twin-panel">
+    <h2><span>3D twin</span><span>drag to rotate · scroll to zoom</span></h2>
+    <div id="twin"></div>
   </section>
   <div class="stack">
     <section class="panel">
@@ -70,6 +78,7 @@
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
 function render(s) {
+  if (window.twinUpdate) window.twinUpdate(s.servos);
   $("link").textContent = s.connected ? "online" : ("offline" + (s.error ? " · " + s.error : ""));
   $("link").className = "pill " + (s.connected ? "ok" : "bad");
   $("cam").textContent = "camera " + (s.camera_fps ? s.camera_fps + " fps" : "–");
@@ -97,5 +106,9 @@ es.onerror = () => { $("link").textContent = "dashboard offline"; $("link").clas
 setInterval(() => { $("faceimg").src = "/face.jpg?" + Date.now(); }, 1000);
 $("camimg").onerror = () => setTimeout(() => { $("camimg").src = "/camera.mjpg?" + Date.now(); }, 2000);
 </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+<script src="/dashboard3d.js"></script>
 </body>
 </html>

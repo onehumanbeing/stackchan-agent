@@ -1,0 +1,11 @@
+{
+  "_doc": "Servo id -> 3D model joint. model_deg = home + sign * (servo_deg - zero). Set zero with `stackchan calibrate` while the arms are in the home pose (both arms straight forward).",
+  "joints": {
+    "1": {"joint": "ls", "zero": 162.0, "sign": 1},
+    "2": {"joint": "le", "zero": 0.0, "sign": 1},
+    "3": {"joint": "lw", "zero": 0.0, "sign": 1},
+    "4": {"joint": "lj", "zero": 0.0, "sign": 1},
+    "5": {"joint": "rs", "zero": 167.5, "sign": 1},
+    "6": {"joint": "rj", "zero": 0.0, "sign": 1}
+  }
+}

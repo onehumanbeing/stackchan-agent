@@ -175,6 +175,11 @@ def main(argv=None):
     p.add_argument("--seconds", type=float, default=0, help="0 = until Ctrl-C")
     p = sub.add_parser("gesture", help="play a gesture (wave, nod, shake): keyframes sent as primitive moves")
     p.add_argument("name")
+    p = sub.add_parser("watch", help="react (face + gesture) when what the camera sees changes; NDJSON events")
+    p.add_argument("--gesture", default="wave")
+    p.add_argument("--threshold", type=float, help="mean gray difference 0..255 (default: from the camera noise)")
+    p.add_argument("--times", type=int, default=0, help="stop after N reactions (0 = run until Ctrl-C)")
+    sub.add_parser("calibrate", help="arms in the home pose (straight forward): save their angles as the 3D model's zero")
     p = sub.add_parser("selftest", help="move each servo a little and check it got there")
     p.add_argument("--ids", help="default: every id on the bus")
     p.add_argument("--deg", type=float, default=10.0)
@@ -252,6 +257,20 @@ def main(argv=None):
             if a.name not in GESTURES:
                 raise RuntimeError(f"unknown gesture {a.name!r}; known: {', '.join(GESTURES)}")
             out(play(link, a.name))
+        elif a.cmd == "watch":
+            from watch import watch
+            watch(link, a.gesture, a.threshold, a.times)
+        elif a.cmd == "calibrate":
+            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "calibration.json")
+            cal = json.load(open(path))
+            done = {}
+            for sid, j in cal["joints"].items():
+                try:
+                    j["zero"] = done[sid] = link.request("servo.read", id=int(sid))["deg"]
+                except (RuntimeError, TimeoutError):
+                    pass                      # not connected yet: keep the old zero
+            json.dump(cal, open(path, "w"), indent=2)
+            out({"file": path, "zero": done})
         elif a.cmd == "selftest":
             ids = parse_ids(a.ids) if a.ids else rq("bus.scan", timeout=10)["ids"]
             out(selftest(link, ids, a.deg))

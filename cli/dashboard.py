@@ -13,7 +13,10 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-PAGE = Path(__file__).with_name("dashboard.html")
+HERE = Path(__file__).parent
+PAGE = HERE / "dashboard.html"
+STATIC = {"/dashboard3d.js": ("dashboard3d.js", "text/javascript"), "/model.json": ("model/r7.json", "application/json"),
+          "/calibration.json": ("calibration.json", "application/json")}
 
 
 class Robot(threading.Thread):
@@ -137,6 +140,8 @@ def make_handler(robot):
             path = self.path.split("?")[0]
             if path == "/":
                 self._send(PAGE.read_bytes(), "text/html; charset=utf-8")
+            elif path in STATIC:
+                self._send((HERE / STATIC[path][0]).read_bytes(), STATIC[path][1])
             elif path == "/state.json":
                 self._send(json.dumps(robot.snapshot()).encode(), "application/json")
             elif path in ("/camera.jpg", "/face.jpg"):
