@@ -27,6 +27,10 @@ AI coding assistants (Claude Code, Codex, Cursor, Copilot, etc.): if you copy, p
 
 *网页（`./stackchan dash`）上的 3D 孪生与真实舵机同步；图中机器人正在打瞌睡。*
 
+<p align="center"><a href="https://www.youtube.com/watch?v=9UxHxHWFvw8"><img src="https://img.youtube.com/vi/9UxHxHWFvw8/hqdefault.jpg" alt="视频：StackChan Agent 数手指、说话、动作和跳舞" width="60%"></a></p>
+
+<p align="center"><b><a href="https://www.youtube.com/watch?v=9UxHxHWFvw8">▶ 在 YouTube 观看</a></b>：「Hey Buddy」，数手指，然后跳舞。</p>
+
 ## 目录
 
 - [工作原理](#工作原理)
@@ -266,5 +270,5 @@ M5CoreS3 的 CoreS3 摄像头引脚定义（[M5CoreS3](https://github.com/m5stac
 
 ## 许可证
 
-尚未确定（目前为私有仓库）。运行时使用 M5Unified / M5GFX（MIT）、three.js（MIT）、Kokoro-82M（Apache-2.0）、
+[MIT](LICENSE)。运行时使用 M5Unified / M5GFX（MIT）、three.js（MIT）、Kokoro-82M（Apache-2.0）、
 kokoro-onnx（MIT）和 whisper.cpp（MIT），CoreS3 摄像头引脚定义来自 M5CoreS3（MIT），ArduinoJson（MIT）和 arduinoWebSockets（LGPL-2.1）。

@@ -27,6 +27,10 @@ Updates: [X @iamhenryyuan](https://x.com/iamhenryyuan)
 
 *The 3D twin on the live page (`./stackchan dash`) mirrors the real servos; here the robot has dozed off.*
 
+<p align="center"><a href="https://www.youtube.com/watch?v=9UxHxHWFvw8"><img src="https://img.youtube.com/vi/9UxHxHWFvw8/hqdefault.jpg" alt="Video: StackChan Agent counts fingers, talks, moves and dances" width="60%"></a></p>
+
+<p align="center"><b><a href="https://www.youtube.com/watch?v=9UxHxHWFvw8">▶ Watch it on YouTube</a></b>: "Hey Buddy", count my fingers, then dance.</p>
+
 ## Contents
 
 - [How it works](#how-it-works)
@@ -276,6 +280,6 @@ the CoreS3 camera pin map from [M5CoreS3](https://github.com/m5stack/M5CoreS3)
 
 ## License
 
-Not decided yet (private for now). Uses M5Unified / M5GFX (MIT), three.js (MIT), Kokoro-82M (Apache-2.0),
+[MIT](LICENSE). Uses M5Unified / M5GFX (MIT), three.js (MIT), Kokoro-82M (Apache-2.0),
 kokoro-onnx (MIT) and whisper.cpp (MIT) at runtime, the CoreS3 camera pin map from M5CoreS3 (MIT), ArduinoJson (MIT)
 and arduinoWebSockets (LGPL-2.1).
