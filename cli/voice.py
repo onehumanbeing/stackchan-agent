@@ -203,7 +203,7 @@ class Voice(threading.Thread):
             text = self.stt.transcribe(pcm, self.agent.lang)
             print(json.dumps({"at": time.strftime("%H:%M:%S"), "voice": self.mode, "heard": text, "audio_s": round(len(pcm) / (2 * RATE), 2),
                               "stt_s": round(time.monotonic() - t0, 2)}, ensure_ascii=False), file=sys.stderr, flush=True)
-            if not text or text.startswith("["):  # [BLANK_AUDIO], [Music] ...
+            if not text or text.strip()[:1] in ("[", "(", "*", "-"):  # [BLANK_AUDIO], (music), *cough*, "-": not speech
                 continue
             if self.mode == "idle":
                 m = self.wake.search(text)

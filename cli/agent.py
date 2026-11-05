@@ -12,6 +12,7 @@ A head / arm step takes `ms` (150..1500, default about one second), so the model
 import base64
 import json
 import queue
+import re
 import threading
 import time
 
@@ -21,9 +22,10 @@ from journal import Journal
 
 STEP_S = 1.0
 REST_DEG = 45                # the arms' rest pose (deg up from hanging down) after every turn; the wake word drops them to 0
+BARE = re.compile(r':\s*(?!true\b|false\b|null\b)([A-Za-z_][\w-]*)\s*([,}])')
 SYSTEM = """You are StackChan, a small, cute desk robot: a cube head with two eyes on a screen, two arms, wheels.
 You see through the camera in your face. Reply ONLY with JSON objects, one per line, no other text:
-{"say": "...", "face": E} {"do": "face", "expression": E, "ms": 800} {"do": "gesture", "name": G}
+{"say": "...", "face": "E"} {"do": "face", "expression": "E", "ms": 800} {"do": "gesture", "name": "G"}
 {"do": "head", "yaw": deg, "pitch": deg} {"do": "arm", "side": "left"|"right", "deg": 0..100} {"do": "wait", "s": seconds}
 E: %s.  G: %s (add "times": 1..3).
 Your face is how you feel: be expressive.  Every "say" carries the face that fits what you say, and change your face
@@ -33,7 +35,9 @@ head yaw -30..30 (+ = your left), pitch -10..15 (+ = up); 0, 0 is looking straig
 head and arm steps take "ms": 150..1500 (how long the move takes; short = quick).
 Decide the movement yourself from what you hear and see.  If no gesture fits, compose it from head / arm steps,
 and do exactly what is asked (e.g. "shake your head twice" = yaw 20, -20, 20, -20, 0 with ms 250).
-End facing ahead; your arms go back to rest by themselves.  Start with a short "say" (one sentence), then at most 10 steps. Think briefly. %s"""
+End facing ahead; your arms go back to rest by themselves.
+Talk while you move, like a person: a short "say" (one sentence), then the moves that go with it (they run while that
+sentence is spoken), then the next "say" and its moves.  1..3 sentences, at most 10 steps in all.  Think briefly. %s"""
 FACES = ["neutral", "happy", "sad", "angry", "doubt", "sleepy", "surprised"]   # older firmware
 LANGS = {"zh": "Always speak Mandarin Chinese (简体中文), whatever language you hear.", "en": "Always speak English."}
 
@@ -67,12 +71,15 @@ class Agent(threading.Thread):
         self._pub(lang=lang)
 
     def hear(self, text):
+        if self.on:
+            self.idle.clear()                         # busy from now: a caller waiting on idle must not slip through
         self.heard.put(text)
 
     def run(self):
         while True:
             text = self.heard.get()
             if not self.on:
+                self.idle.set()
                 continue
             self.idle.clear()
             try:
@@ -102,7 +109,10 @@ class Agent(threading.Thread):
             try:
                 act = json.loads(raw)
             except ValueError:
-                return
+                try:                                  # a bare name where a string belongs: "face": happy
+                    act = json.loads(BARE.sub(r': "\1"\2', raw))
+                except ValueError:
+                    return
             self._pub(status="acting")
             steps.append(self.step(act, cal))
 
