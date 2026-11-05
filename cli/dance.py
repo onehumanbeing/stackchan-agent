@@ -22,7 +22,7 @@ MUSIC_OFFSET_S = 0.295       # the first beat, seconds after the music starts
 BEATS = 46                   # length: 46 beats = 19.7 s, the song is 20.0 s
 MUSIC = Path.home() / ".cache" / "stackchan-agent" / "dance.mp3"
 VOLUME = 200                 # speaker 0..255 (the agent uses 180)
-ARM_MAX, YAW_MAX, PITCH_MAX = 90, 22, 10     # deg from neutral; arms: 0 = down, toward the middle of travel
+ARM_MAX, YAW_MAX, PITCH_MAX = 100, 28, 18    # deg from neutral; arms: 0 = down, toward the middle of travel
 ARM_SPEED_MAX = 3200         # STS steps/s (~280 deg/s)
 ARM_ACC = 60                 # x100 steps/s^2: the soft start / stop of every arm move
 ARMS = {"l": 1, "r": 5}      # servo ids: left, right shoulder
@@ -34,46 +34,46 @@ def _timeline():
     t = [(-1.0, {"l": 0, "r": 0, "yaw": 0, "pitch": 0}, "neutral")]
     add = lambda b, face=None, **pose: t.append((b, pose, face))
 
-    def bounce(b, side, hi=45, lo=25, yaw=8):       # weight shifts to one side, down on the beat, up on the "and"
-        add(b, l=hi if side > 0 else lo, r=lo if side > 0 else hi, yaw=yaw * side, pitch=-3)
-        add(b + 0.5, pitch=2)
+    def bounce(b, side, hi=60, lo=30, yaw=12):      # weight shifts to one side, down on the beat, up on the "and"
+        add(b, l=hi if side > 0 else lo, r=lo if side > 0 else hi, yaw=yaw * side, pitch=-6)
+        add(b + 0.5, pitch=6)
 
-    add(0, "excited", l=15, r=15, pitch=-5)          # 0-2: crouch, arms to the ready pose, eyes light up
-    add(1, l=30, r=30, pitch=4)
+    add(0, "excited", l=20, r=20, pitch=-8)          # 0-2: crouch, arms to the ready pose, eyes light up
+    add(1, l=40, r=40, pitch=12)
     for b in range(2, 6):
         bounce(b, 1 if b % 2 else -1)
-    add(6, l=90, r=90, yaw=0, pitch=8)               # hit 1: both arms up
-    add(7, l=35, r=35, pitch=0)
+    add(6, l=100, r=100, yaw=0, pitch=18)            # hit 1: both arms up, head up
+    add(7, l=45, r=45, pitch=0)
     for b in range(8, 13):
         bounce(b, 1 if b % 2 else -1)
-    add(13, "wink", l=90, r=30, yaw=6)               # hit 2: a wave, left -> right -> left
-    add(14, l=30, r=90, yaw=-6)
-    add(15, l=90, r=30, yaw=6)
-    add(16, "excited", l=35, r=35, yaw=0)
+    add(13, "wink", l=100, r=30, yaw=12, pitch=10)   # hit 2: a wave, left -> right -> left
+    add(14, l=30, r=100, yaw=-12)
+    add(15, l=100, r=30, yaw=12)
+    add(16, "excited", l=45, r=45, yaw=0, pitch=0)
     for b in range(17, 22):
         bounce(b, 1 if b % 2 else -1)
-    add(22, l=60, r=60, yaw=0, pitch=-8)             # hit 3: two quick nods
-    add(22.25, pitch=4)
-    add(22.5, pitch=-8)
-    add(22.75, pitch=4)
-    add(23, l=35, r=35, pitch=0)
+    add(22, l=70, r=70, yaw=0, pitch=-10)            # hit 3: two quick nods
+    add(22.25, pitch=8)
+    add(22.5, pitch=-10)
+    add(22.75, pitch=8)
+    add(23, l=45, r=45, pitch=0)
     for b in range(24, 28):
         bounce(b, 1 if b % 2 else -1)
-    add(28, l=65, r=20, yaw=14, pitch=-3)            # the drop: two big swings, freeze, open up
-    add(29, l=20, r=65, yaw=-14, pitch=-3)
-    add(29.25, l=20, r=65, yaw=-14, pitch=-3)        # freeze a quarter beat
-    add(30, "surprised", l=80, r=80, yaw=0, pitch=8)
+    add(28, l=80, r=20, yaw=20, pitch=-6)            # the drop: two big swings, freeze, open up
+    add(29, l=30, r=80, yaw=-20, pitch=-6)
+    add(29.25, l=30, r=80, yaw=-20, pitch=-6)        # freeze a quarter beat
+    add(30, "surprised", l=95, r=95, yaw=0, pitch=18)
     add(30.5, "excited")
-    add(31, l=35, r=35, pitch=0)
+    add(31, l=45, r=45, pitch=0)
     for b in range(32, 38):
         bounce(b, 1 if b % 2 else -1)
-    add(38, l=70, r=30, yaw=YAW_MAX, pitch=4)        # hit 5: a turn to one side ...
-    add(39, l=70, r=30, yaw=YAW_MAX, pitch=4)        # hold
-    add(39.5, l=35, r=35, yaw=0, pitch=0)            # ... and back
-    bounce(40, 1, 50, 25, 10)                        # ending: half-time bounces
-    bounce(42, -1, 50, 25, 10)
-    add(44, "happy", l=90, r=20, yaw=0, pitch=6)     # one arm high, one low: freeze half a beat
-    add(44.5, l=90, r=20, yaw=0, pitch=6)
+    add(38, l=90, r=30, yaw=YAW_MAX, pitch=12)        # hit 5: a turn to one side ...
+    add(39, l=90, r=30, yaw=YAW_MAX, pitch=12)        # hold
+    add(39.5, l=45, r=45, yaw=0, pitch=0)            # ... and back
+    bounce(40, 1, 70, 30, 15)                        # ending: half-time bounces
+    bounce(42, -1, 70, 30, 15)
+    add(44, "happy", l=100, r=20, yaw=0, pitch=15)     # one arm high, one low: freeze half a beat
+    add(44.5, l=100, r=20, yaw=0, pitch=15)
     add(46, "neutral", l=0, r=0, yaw=0, pitch=0)     # together back to neutral
     return sorted(t, key=lambda f: f[0])
 
