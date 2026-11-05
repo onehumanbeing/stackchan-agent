@@ -100,7 +100,7 @@ function step(x) {
 function renderAgent(g) {
   if (!g) return;
   $("agstat").textContent = g.status; $("agstat").className = "pill " + (g.status === "off" ? "" : g.status === "idle" ? "ok" : "busy");
-  $("heard").innerHTML = g.heard ? `“${esc(g.heard)}”` + (g.say ? `<span class="say">${esc(g.say)}</span>` : "") : `<span class="empty">waiting for “hey dude”</span>`;
+  $("heard").innerHTML = g.heard ? `“${esc(g.heard)}”` + (g.say ? `<span class="say">${esc(g.say)}</span>` : "") : `<span class="empty">waiting for “Hey Grok”</span>`;
   const t = $("think"), stick = t.scrollTop + t.clientHeight >= t.scrollHeight - 4;
   t.textContent = g.thinking || "–"; if (stick) t.scrollTop = t.scrollHeight;
   $("steps").innerHTML = (g.steps || []).map(step).join("");

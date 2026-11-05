@@ -30,14 +30,8 @@ const floor = new THREE.Mesh(new THREE.CircleGeometry(600, 64), new THREE.MeshSt
 floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
 
 const camera = new THREE.PerspectiveCamera(32, 1, 1, 3000);
-camera.position.set(210, 170, 300);
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 80, 0);
 controls.enableDamping = true;
-controls.autoRotate = true; controls.autoRotateSpeed = 0.6;
-let idleUntil = 0;
-controls.addEventListener("start", () => { controls.autoRotate = false; });
-controls.addEventListener("end", () => { idleUntil = performance.now() + 8000; });
 
 // Live face on the screen: the robot's own screen grab, refreshed twice a second.
 const screenMat = new THREE.MeshBasicMaterial({color: 0xffffff, toneMapped: false});
@@ -108,12 +102,14 @@ window.twinUpdate = s => {
   if (body === "full" && !full.ready && !full.loading) { full.loading = true; loadFull(); }
 };
 
-// Framing per body: the full arms reach ~20 cm forward.
+// Framing per body, seen from 45 degrees off the front (the full arms reach ~20 cm forward).
 function frame(b) {
-  const far = b === "full";
-  controls.target.set(0, far ? 90 : 80, far ? 60 : 0);
-  camera.position.set(far ? 330 : 210, far ? 240 : 170, far ? 470 : 300);
+  const far = b === "full", d = far ? 560 : 360, t = new THREE.Vector3(0, far ? 90 : 80, far ? 60 : 0);
+  controls.target.copy(t);
+  camera.position.set(t.x + d * Math.SQRT1_2, t.y + d * 0.42, t.z + d * Math.SQRT1_2);
 }
+
+frame("simple");
 
 function resize() { const w = view.clientWidth, h = view.clientHeight; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 addEventListener("resize", resize); resize();
@@ -131,6 +127,5 @@ addEventListener("resize", resize); resize();
     const h = full.cfg.presets.home;
     poseFull({ls: h.ls + shown.ls, le: shown.le, lw: shown.lw, lj: shown.lj, rs: h.rs + shown.rs, rj: shown.rj});
   }
-  if (!controls.autoRotate && idleUntil && performance.now() > idleUntil) controls.autoRotate = true;
   controls.update(); renderer.render(scene, camera); requestAnimationFrame(loop);
 })();

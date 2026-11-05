@@ -204,6 +204,11 @@ def make_handler(robot, agent=None):
                 q = {k: urllib.parse.unquote_plus(v) for k, v in (p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)}
                 if "on" in q:
                     agent.switch(q["on"] in ("1", "true", "on"))
+                if q.get("lang"):
+                    try:
+                        agent.set_lang(q["lang"])
+                    except ValueError as e:
+                        return self._send(json.dumps({"ok": False, "error": str(e)}).encode(), "application/json", 400)
                 if q.get("say"):
                     agent.hear(q["say"])
                 self._send(json.dumps({"ok": True, **agent.view}).encode(), "application/json")
@@ -268,12 +273,13 @@ def serve(host, ids, hz, fps, listen, port, llm=None):
     agent = None
     if llm:
         from agent import Agent
-        agent = Agent(robot, llm["url"], llm["model"], llm.get("api_key"), llm.get("record", True), llm.get("motion", True))
+        agent = Agent(robot, llm["url"], llm["model"], llm.get("api_key"), llm.get("record", True), llm.get("motion", True),
+                      llm.get("lang", "en"))
         agent.start()
         agent.switch(llm.get("on", False))
         if llm.get("whisper_model"):
             from voice import Voice
-            Voice(robot, agent, llm["whisper_model"], llm.get("tts_voice") or "af_heart").start()
+            Voice(robot, agent, llm["whisper_model"], llm.get("tts_voice")).start()
     httpd = ThreadingHTTPServer((listen, port), make_handler(robot, agent))
     httpd.daemon_threads = True
     urls = [f"http://{ip}:{port}/" for ip in (lan_ips() if listen == "0.0.0.0" else [listen])]

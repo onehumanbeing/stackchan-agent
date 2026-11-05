@@ -32,6 +32,7 @@ With a running `dash` that has an agent (`--llm-url`):
 ./stackchan agent say "look at the cup and nod"   # one agent turn, as if spoken
 ./stackchan agent status                          # what it heard, its thinking, each step (ok / error / ms)
 ./stackchan agent on | off
+./stackchan agent lang zh | en                    # language it speaks and listens for
 ./stackchan view simple | full                    # 3D twin body variant
 ```
 

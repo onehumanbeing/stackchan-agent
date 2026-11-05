@@ -2,8 +2,9 @@
 
 Mic audio arrives as 16 kHz int16 chunks (robot.on_audio).  An energy VAD cuts it into utterances;
 whisper.cpp (whisper-server, started here, local) transcribes them.  While idle, an utterance that
-starts with the wake phrase ("hey dude") wakes the robot: "Listening", eyes and head up.  The next
-utterance goes to the agent.  Replies are spoken with a local TTS (macOS `say` by default) and
+starts with the wake phrase ("Hey Grok") wakes the robot: it answers, looks up and, when it has nothing
+else to do, lifts its head a little until the command is in.  The next utterance goes to the agent.
+Replies are spoken with a local TTS (Kokoro, else macOS `say`) and
 streamed to the robot's speaker; the mic is off while it speaks (the board is half duplex).
 """
 import array
@@ -21,7 +22,16 @@ import wave
 from pathlib import Path
 
 RATE, CHUNK_S = 16000, 0.04
-WAKE = re.compile(r"\b(hey|hi|hay|ok|okay)[\s,.!]*(dude|dood|duke|dud|dudes)\b", re.I)
+WAKE = re.compile(r"(?:(?:hey|hi|hay|hei|ok|okay|嘿|黑|嗨|哈)[\s,.!，。！、]*)?(grok|grock|groq|grog|grokk|crok|格罗克|格洛克|葛洛克|格鲁克)", re.I)
+WAKE_PROMPT = "Hey Grok. 嘿 Grok。"
+HEARD = {"zh": "我在听", "en": "Listening"}
+LIFT_DEG = 8
+
+
+def wordy(text):
+    """At least two words (or two CJK characters): shorter bits are usually noise or our own echo."""
+    text = text.strip(" ,.!?，。！？")
+    return len(text) >= 2 if not text.isascii() else len(text.split()) >= 2
 NO_PROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
@@ -34,7 +44,7 @@ class Whisper:
             raise RuntimeError("voice needs whisper.cpp (brew install whisper-cpp) and a ggml model (--whisper-model)")
         self.url = f"http://127.0.0.1:{port}/inference"
         self.proc = subprocess.Popen([exe, "-m", str(model), "--port", str(port), "-l", language, "-nt",
-                                      "--prompt", "Hey Dude."], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                      "--prompt", WAKE_PROMPT], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(120):                    # model load
             try:
                 NO_PROXY.open(f"http://127.0.0.1:{port}/", timeout=1)
@@ -43,14 +53,16 @@ class Whisper:
                 time.sleep(0.5)
         raise RuntimeError("whisper-server did not start")
 
-    def transcribe(self, pcm):
+    def transcribe(self, pcm, language=None):
         buf = io.BytesIO()
         with wave.open(buf, "wb") as w:
             w.setnchannels(1), w.setsampwidth(2), w.setframerate(RATE), w.writeframes(pcm)
         boundary = "stackchanvoice"
         body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.wav\"\r\n"
                 "Content-Type: audio/wav\r\n\r\n").encode() + buf.getvalue() + \
-               f"\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"response_format\"\r\n\r\njson\r\n--{boundary}--\r\n".encode()
+               f"\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"response_format\"\r\n\r\njson".encode() + \
+               (f"\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"language\"\r\n\r\n{language}".encode() if language else b"") + \
+               f"\r\n--{boundary}--\r\n".encode()
         req = urllib.request.Request(self.url, body, {"Content-Type": f"multipart/form-data; boundary={boundary}"})
         return json.loads(NO_PROXY.open(req, timeout=30).read()).get("text", "").strip()
 
@@ -94,21 +106,21 @@ def say_pcm(text, voice="Samantha"):
 
 
 class Voice(threading.Thread):
-    def __init__(self, robot, agent, whisper_model, tts_voice="af_heart", wake=WAKE):
+    def __init__(self, robot, agent, whisper_model, tts_voice=None, wake=WAKE):
         super().__init__(daemon=True)
         self.robot, self.agent, self.wake = robot, agent, wake
         self.tts = make_tts(tts_voice)
         self.stt = Whisper(whisper_model)
         self.mode = "idle"                       # idle (wake word) | listening (command) | busy
         self.buf, self.speech, self.silence, self.floor = bytearray(), False, 0.0, 200.0
-        self.utterances = []
+        self.utterances, self.lifted, self.deaf_until = [], None, 0.0     # pitch to go back to after a wake-up lift
         self.lock = threading.Condition()
         robot.on_audio = self.feed
         agent.speak = self.say
 
     # --- mic side -------------------------------------------------------------------------------
     def feed(self, pcm):
-        if self.mode == "busy":
+        if self.mode == "busy" or time.monotonic() < self.deaf_until:   # speaking, or its echo
             return
         a = array.array("h", pcm)
         level = math.sqrt(sum(x * x for x in a) / max(1, len(a)))
@@ -146,6 +158,7 @@ class Voice(threading.Thread):
                 break
             time.sleep(0.1)
         self.mode = prev if prev != "busy" else "idle"
+        self.deaf_until = time.monotonic() + 0.4
         self._mic(True)
 
     # --- main loop ------------------------------------------------------------------------------
@@ -154,12 +167,13 @@ class Voice(threading.Thread):
         while True:
             with self.lock:
                 while not self.utterances:
-                    if not self.lock.wait(timeout=5):
+                    if not self.lock.wait(timeout=2):
                         self._keep_mic()
+                        self._give_up()
                 pcm = self.utterances.pop(0)
             if not self.agent.on:
                 continue
-            text = self.stt.transcribe(pcm)
+            text = self.stt.transcribe(pcm, self.agent.lang)
             if not text or text.startswith("["):  # [BLANK_AUDIO], [Music] ...
                 continue
             self.agent._pub(heard=text)
@@ -169,9 +183,12 @@ class Voice(threading.Thread):
                     continue
                 rest = text[m.end():].strip(" ,.!?")
                 self._wake()
-                if len(rest.split()) < 2:
+                if not wordy(rest):
                     continue
                 text = rest
+            elif not wordy(text):
+                continue
+            self._unlift()
             self.mode = "busy"
             self.agent.hear(text)
             self.agent.idle.wait(60)
@@ -182,11 +199,34 @@ class Voice(threading.Thread):
         self.mode = "listening"
         self.agent._pub(status="listening")
         self.robot.request("face.set", expression="listening")
-        if self.agent.motion:
-            h = self.robot.snapshot().get("calibration", {}).get("head", {})
-            self.robot.request("head.move", id=2, deg=h.get("pitch_zero", 0) + h.get("pitch_sign", 1) * 10, ms=300)
-        self.say("Listening")
-        self.mode = "listening"
+        # A small "I heard you" head lift (also with --no-motion), only when it is free: no turn running, nothing in its hands.
+        if self.agent.idle.is_set() and not self.agent.holding and self.lifted is None:
+            s = self.robot.snapshot()
+            pitch, sign = s.get("head", {}).get("pitch"), s.get("calibration", {}).get("head", {}).get("pitch_sign", 1)
+            if pitch is not None:
+                self.lifted = pitch
+                self.robot.request("head.move", id=2, deg=pitch + sign * LIFT_DEG, ms=250)
+        self.say(HEARD.get(self.agent.lang, HEARD["en"]))
+        self.mode, self.woke = "listening", time.monotonic()
+
+    def _give_up(self):
+        """No command within 10 s of the wake word: back to waiting for it."""
+        if self.mode == "listening" and time.monotonic() - self.woke > 10 and not self.speech:
+            self.mode = "idle"
+            self._unlift()
+            self.agent._pub(status="idle")
+            try:
+                self.robot.request("face.set", expression="neutral")
+            except (RuntimeError, TimeoutError):
+                pass
+
+    def _unlift(self):
+        if self.lifted is not None:
+            pitch, self.lifted = self.lifted, None
+            try:
+                self.robot.request("head.move", id=2, deg=pitch, ms=300)
+            except (RuntimeError, TimeoutError):
+                pass
 
     def _keep_mic(self):
         if self.mode != "busy":

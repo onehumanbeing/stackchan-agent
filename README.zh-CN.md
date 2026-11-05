@@ -9,7 +9,7 @@
 - **CLI**（`./stackchan`）：每条命令输出 JSON，方便 agent 读结果；用法见 `AGENTS.md`。
 - **网页**（`./stackchan dash`）：摄像头、表情、3D 孪生、舵机状态、故障，以及 agent 的 Thinking 和 Steps，局域网内任何机器都能打开。
 - **Agent**：每一轮把听到的话和摄像头画面交给模型，模型一行输出一个原语（说话、表情、手势、头、手臂），CLI 收到一行就执行一行。手势是 `cli/gestures.py` 里的关键帧，加新动作不用重新烧录。
-- **语音**：说 "Hey Dude" 唤醒，它回答 "Listening" 并抬头，然后用自己的喇叭回话。语音识别用 whisper.cpp，语音合成用 Kokoro，都在本地运行。
+- **语音**：说 "Hey Grok" 唤醒，它会应答、眼睛看上来（空闲时还会轻轻抬一下头），然后用自己的喇叭回话。`--lang zh|en` 选择说话语言，运行中可用 `./stackchan agent lang zh|en` 切换。语音识别用 whisper.cpp，语音合成用 Kokoro，都在本地运行。
 - **数据采集**：每一轮都会记录到 `~/.stackchan/episodes`（画面、状态、听到的话、思考过程、执行的步骤），格式见 `docs/episodes.md`。
 
 安装、烧录和运行命令见英文 README。

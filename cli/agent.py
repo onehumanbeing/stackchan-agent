@@ -25,19 +25,21 @@ You see through the camera in your face. Reply ONLY with JSON objects, one per l
 {"say": "..."} {"do": "face", "expression": E} {"do": "gesture", "name": G} {"do": "head", "yaw": deg, "pitch": deg}
 {"do": "arm", "side": "left"|"right", "deg": 0..60} {"do": "wait", "s": seconds}
 E: neutral happy sad angry doubt sleepy surprised.  G: %s.  head yaw -30..30 (+ = your left), pitch -10..15 (+ = up).
-Start with a short "say" (one sentence, same language as the person), then at most 5 steps. Think briefly."""
+Start with a short "say" (one sentence), then at most 5 steps. Think briefly. %s"""
+LANGS = {"zh": "Always speak Mandarin Chinese (简体中文), whatever language you hear.", "en": "Always speak English."}
 
 
 class Agent(threading.Thread):
-    def __init__(self, robot, url, model, api_key=None, record=True, motion=True):
+    def __init__(self, robot, url, model, api_key=None, record=True, motion=True, lang="en"):
         super().__init__(daemon=True)
         self.robot, self.url, self.model, self.api_key = robot, url, model, api_key
         self.heard, self.on, self.history = queue.Queue(), False, []
         self.idle = threading.Event()             # set between turns (voice.py waits on it)
         self.idle.set()
-        self.journal, self.motion = Journal(record), motion
+        self.holding = False                      # set while a gripper holds something (no idle head cues)
+        self.journal, self.motion, self.lang = Journal(record), motion, lang
         self.speak = lambda text: robot.request("face.set", say=text, ms=4000)   # voice.py replaces this
-        self.view = {"on": False, "status": "off", "heard": "", "thinking": "", "say": "", "steps": [], "turns": 0}
+        self.view = {"on": False, "lang": lang, "status": "off", "heard": "", "thinking": "", "say": "", "steps": [], "turns": 0}
 
     def _pub(self, **kv):
         self.view.update(kv)
@@ -46,6 +48,12 @@ class Agent(threading.Thread):
     def switch(self, on):
         self.on = on
         self._pub(on=on, status="idle" if on else "off")
+
+    def set_lang(self, lang):
+        if lang not in LANGS:
+            raise ValueError(f"lang must be one of {', '.join(LANGS)}")
+        self.lang = lang
+        self._pub(lang=lang)
 
     def hear(self, text):
         self.heard.put(text)
@@ -71,7 +79,7 @@ class Agent(threading.Thread):
         content = [{"type": "text", "text": f"Heard: {text!r}\nState: {json.dumps(self._state())}"}]
         if jpeg:
             content.append({"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(jpeg).decode()}})
-        messages = [{"role": "system", "content": SYSTEM % ", ".join(gestures.GESTURES)}, *self.history[-6:],
+        messages = [{"role": "system", "content": SYSTEM % (", ".join(gestures.GESTURES), LANGS[self.lang])}, *self.history[-6:],
                     {"role": "user", "content": content}]
         t0, steps = time.time(), []
 

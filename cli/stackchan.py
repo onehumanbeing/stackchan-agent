@@ -204,13 +204,15 @@ def main(argv=None):
     p.add_argument("--llm-model", default=os.environ.get("STACKCHAN_LLM_MODEL", "default"))
     p.add_argument("--agent", action="store_true", help="start with the agent switched on")
     p.add_argument("--no-record", action="store_true", help="do not write episodes to ~/.stackchan/episodes")
-    p.add_argument("--no-motion", action="store_true", help="agent thinks and changes faces but never moves a servo")
+    p.add_argument("--no-motion", action="store_true", help="agent thinks and changes faces but never moves a servo (except a small head lift on wake-up)")
     p.add_argument("--whisper-model", default=os.environ.get("STACKCHAN_WHISPER_MODEL"),
-                   help="whisper.cpp ggml model: enables voice (wake word 'hey dude', robot mic + speaker)")
-    p.add_argument("--tts-voice", default=os.environ.get("STACKCHAN_TTS_VOICE", "af_heart"),
-                   help="Kokoro voice (af_heart, af_bella, ...) or a macOS `say` voice when Kokoro is not installed")
-    p = sub.add_parser("agent", help="control the agent of a running dash: on | off | say TEXT")
-    p.add_argument("action", choices=["on", "off", "say", "status"])
+                   help="whisper.cpp ggml model: enables voice (wake word 'Hey Grok', robot mic + speaker)")
+    p.add_argument("--tts-voice", default=os.environ.get("STACKCHAN_TTS_VOICE"),
+                   help="Kokoro voice (default af_heart / zf_xiaoxiao by language) or a macOS `say` voice")
+    p.add_argument("--lang", choices=["zh", "en"], default=os.environ.get("STACKCHAN_LANG", "en"),
+                   help="language the agent speaks; switch at runtime with `stackchan agent lang zh|en`")
+    p = sub.add_parser("agent", help="control the agent of a running dash: on | off | say TEXT | lang zh|en")
+    p.add_argument("action", choices=["on", "off", "say", "status", "lang"])
     p.add_argument("text", nargs="*")
     p.add_argument("--dash", default="http://127.0.0.1:8765")
     p = sub.add_parser("wifi", help="scan | list | status | set SSID | forget SSID")
@@ -230,7 +232,8 @@ def main(argv=None):
         if a.cmd == "view":
             q = f"/api/body?set={a.body}"
         else:
-            q = "/api/agent?" + {"on": "on=1", "off": "on=0", "status": ""}.get(a.action, "say=" + urllib.parse.quote_plus(" ".join(a.text)))
+            q = "/api/agent?" + {"on": "on=1", "off": "on=0", "status": "", "lang": "lang=" + "".join(a.text)}.get(
+                a.action, "say=" + urllib.parse.quote_plus(" ".join(a.text)))
         try:
             out(json.loads(urllib.request.urlopen(a.dash + q, timeout=5).read()))
         except OSError as e:
@@ -240,7 +243,7 @@ def main(argv=None):
         from dashboard import serve
         llm = a.llm_url and {"url": a.llm_url, "model": a.llm_model, "api_key": os.environ.get("STACKCHAN_LLM_KEY"),
                              "on": a.agent, "record": not a.no_record, "motion": not a.no_motion,
-                             "whisper_model": a.whisper_model, "tts_voice": a.tts_voice}
+                             "whisper_model": a.whisper_model, "tts_voice": a.tts_voice, "lang": a.lang}
         serve(a.host or DEFAULT_HOST, parse_ids(a.ids) if a.ids else None, a.hz, a.fps, a.listen, a.http_port, llm)
         return 0
     try:
