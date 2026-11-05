@@ -1,3 +1,5 @@
 pyserial>=3.5
 websockets>=13
 pillow>=10
+kokoro-onnx>=0.4
+numpy

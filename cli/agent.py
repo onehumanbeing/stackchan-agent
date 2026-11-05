@@ -33,6 +33,8 @@ class Agent(threading.Thread):
         super().__init__(daemon=True)
         self.robot, self.url, self.model, self.api_key = robot, url, model, api_key
         self.heard, self.on, self.history = queue.Queue(), False, []
+        self.idle = threading.Event()             # set between turns (voice.py waits on it)
+        self.idle.set()
         self.journal, self.motion = Journal(record), motion
         self.speak = lambda text: robot.request("face.set", say=text, ms=4000)   # voice.py replaces this
         self.view = {"on": False, "status": "off", "heard": "", "thinking": "", "say": "", "steps": [], "turns": 0}
@@ -51,16 +53,21 @@ class Agent(threading.Thread):
     def run(self):
         while True:
             text = self.heard.get()
-            if self.on:
-                try:
-                    self.turn(text)
-                except Exception as e:  # noqa: BLE001 - keep the agent alive, show the error
-                    self._pub(status=f"error: {e}")
+            if not self.on:
+                continue
+            self.idle.clear()
+            try:
+                self.turn(text)
+            except Exception as e:  # noqa: BLE001 - keep the agent alive, show the error
+                self._pub(status=f"error: {e}")
+            finally:
+                self.idle.set()
 
     def turn(self, text):
         cal = self.robot.snapshot().get("calibration", {})
         jpeg = self.robot.jpeg
         self._pub(status="thinking", heard=text, thinking="", say="", steps=[])
+        self.robot.request("face.set", expression="thinking")
         content = [{"type": "text", "text": f"Heard: {text!r}\nState: {json.dumps(self._state())}"}]
         if jpeg:
             content.append({"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(jpeg).decode()}})
@@ -84,6 +91,8 @@ class Agent(threading.Thread):
         self.journal.write({"heard": text, "thinking": self.view["thinking"], "answer": answer, "steps": steps,
                             "state": self._state(), "seconds": round(time.time() - t0, 2)}, jpeg)
         self._pub(status="idle", turns=self.view["turns"] + 1)
+        if not any(s["act"].get("do") == "face" for s in steps):
+            self.robot.request("face.set", expression="neutral")
 
     def _state(self):
         s = self.robot.snapshot()

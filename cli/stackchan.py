@@ -205,6 +205,10 @@ def main(argv=None):
     p.add_argument("--agent", action="store_true", help="start with the agent switched on")
     p.add_argument("--no-record", action="store_true", help="do not write episodes to ~/.stackchan/episodes")
     p.add_argument("--no-motion", action="store_true", help="agent thinks and changes faces but never moves a servo")
+    p.add_argument("--whisper-model", default=os.environ.get("STACKCHAN_WHISPER_MODEL"),
+                   help="whisper.cpp ggml model: enables voice (wake word 'hey dude', robot mic + speaker)")
+    p.add_argument("--tts-voice", default=os.environ.get("STACKCHAN_TTS_VOICE", "af_heart"),
+                   help="Kokoro voice (af_heart, af_bella, ...) or a macOS `say` voice when Kokoro is not installed")
     p = sub.add_parser("agent", help="control the agent of a running dash: on | off | say TEXT")
     p.add_argument("action", choices=["on", "off", "say", "status"])
     p.add_argument("text", nargs="*")
@@ -235,7 +239,8 @@ def main(argv=None):
     if a.cmd == "dash":     # needs Wi-Fi: camera frames only go over WebSocket
         from dashboard import serve
         llm = a.llm_url and {"url": a.llm_url, "model": a.llm_model, "api_key": os.environ.get("STACKCHAN_LLM_KEY"),
-                             "on": a.agent, "record": not a.no_record, "motion": not a.no_motion}
+                             "on": a.agent, "record": not a.no_record, "motion": not a.no_motion,
+                             "whisper_model": a.whisper_model, "tts_voice": a.tts_voice}
         serve(a.host or DEFAULT_HOST, parse_ids(a.ids) if a.ids else None, a.hz, a.fps, a.listen, a.http_port, llm)
         return 0
     try:

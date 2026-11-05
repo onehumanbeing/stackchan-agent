@@ -40,6 +40,12 @@ class Robot(threading.Thread):
         self.jpeg = self.face = None
         self.frames = []
         self.outbox = queue.Queue()          # (cmd, args, Reply) from other threads, e.g. the agent
+        self.on_audio = None                 # callback(pcm bytes) for 'A' microphone frames
+
+    def send_audio(self, pcm):
+        """Queue 16 kHz mono int16 audio for the robot's speaker (sent as 'S' frames of <= 4 KB)."""
+        for i in range(0, len(pcm), 4096):
+            self.outbox.put((None, b"S" + pcm[i:i + 4096], None))
 
     def request(self, cmd, timeout=5.0, **args):
         """Thread-safe command over the shared connection; returns the result or raises RuntimeError."""
@@ -112,13 +118,20 @@ class Robot(threading.Thread):
                     next_head = now + 0.2
                 while not self.outbox.empty():
                     c, args, reply = self.outbox.get_nowait()
-                    ask(c, reply, **args)
+                    if c is None:
+                        ws.send(args)            # raw binary frame
+                    else:
+                        ask(c, reply, **args)
                 try:
                     msg = ws.recv(timeout=0.02)
                 except TimeoutError:
                     continue
-                if isinstance(msg, bytes):          # camera frame
-                    self.jpeg = msg
+                if isinstance(msg, bytes) and msg[:1] == b"A":     # microphone chunk
+                    if self.on_audio:
+                        self.on_audio(msg[1:])
+                    continue
+                if isinstance(msg, bytes):          # camera frame ('J')
+                    self.jpeg = msg[1:]
                     self.frames = [t for t in self.frames if now - t < 2] + [now]
                     self._set(camera_fps=round(len(self.frames) / 2, 1))
                     continue
@@ -258,6 +271,9 @@ def serve(host, ids, hz, fps, listen, port, llm=None):
         agent = Agent(robot, llm["url"], llm["model"], llm.get("api_key"), llm.get("record", True), llm.get("motion", True))
         agent.start()
         agent.switch(llm.get("on", False))
+        if llm.get("whisper_model"):
+            from voice import Voice
+            Voice(robot, agent, llm["whisper_model"], llm.get("tts_voice") or "af_heart").start()
     httpd = ThreadingHTTPServer((listen, port), make_handler(robot, agent))
     httpd.daemon_threads = True
     urls = [f"http://{ip}:{port}/" for ip in (lan_ips() if listen == "0.0.0.0" else [listen])]

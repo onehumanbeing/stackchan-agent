@@ -1,4 +1,4 @@
-# StackChan agent protocol (v0.1)
+# StackChan agent protocol (v0.2)
 
 One JSON object per line (NDJSON). The same messages travel over:
 - **USB serial**: CoreS3 native USB, any baud, `\n`-terminated lines;
@@ -12,7 +12,7 @@ Several clients can be connected at once (USB + up to 4 WebSocket clients). Each
 | Request | `{"id": 7, "cmd": "servo.move", "args": {"id": 1, "deg": 10}}` (`id` optional, echoed back) |
 | Reply | `{"id": 7, "ok": true, "result": {...}}`, or `{"id": 7, "ok": false, "error": "no reply"}` |
 | Event | `{"ev": "hello" \| "state" \| "fault", ...}` (no `id`) |
-| Camera frame | WebSocket **binary** frame = one JPEG (after `camera.start`) |
+| Binary frame | WebSocket only. First byte is the type: `J` camera JPEG (after `camera.start`), `A` microphone audio (after `mic.start`), `S` speaker audio (client → robot). Audio: 16 kHz mono int16 little endian. |
 
 ## Units
 - Position `raw`: 0..4095 over 360°. `deg`: (raw − 2048) × 360 / 4096, so 0° is the middle of travel.
@@ -40,13 +40,18 @@ Several clients can be connected at once (USB + up to 4 WebSocket clients). Each
 | `head.torque` | `id`, `on` | – |
 | `stream.start` | `ids` (≤ 16), `hz` (1..100, default 20) | `hz`, `count` |
 | `stream.stop` | – | – |
-| `face.set` | `expression` (neutral happy sad angry doubt sleepy surprised), `style`, `gaze: [v, h]` (−1..1), `mouth` (0..1), `blink`, `say` (caption, "" clears), `ms` (caption time, 0 = keep) | `expression`, `style` |
+| `face.set` | `expression` (neutral happy sad angry doubt sleepy surprised listening thinking), `style`, `gaze: [v, h]` (−1..1), `mouth` (0..1), `blink`, `say` (caption, "" clears), `ms` (caption time, 0 = keep) | `expression`, `style` |
 | `face.styles` | – | `styles` (names) |
 | `face.snap` | – | `jpeg` (base64, what the screen shows), `bytes` |
 | `camera.snap` | `quality` (10..95) | `jpeg` (base64, 320 × 240), `bytes`, `seq` |
 | `camera.start` | `fps` (1..15, default 5), `quality` | `fps`, `quality`. **WebSocket only**: frames arrive as binary messages. |
 | `camera.stop` | – | – |
 | `camera.config` | `quality`, `hmirror`, `vflip` | `quality` |
+| `mic.start` | – | `rate`, `chunk` (samples). **WebSocket only**: `A` frames every 40 ms. Fails while the speaker plays (half duplex). |
+| `mic.stop` | – | – |
+| `speaker.status` | – | `playing`, `mic` |
+| `speaker.stop` | – | – (drops queued audio) |
+| `speaker.volume` | `volume` (0..255, 180) | – |
 | `wifi.scan` | – | `networks: [{ssid, rssi, open}]`, strongest first |
 | `wifi.set` | `ssid`, `pass` | – (**USB only**; up to 5 networks in NVS; passwords are never sent back) |
 | `wifi.forget` | `ssid` | – |

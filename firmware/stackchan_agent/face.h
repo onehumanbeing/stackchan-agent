@@ -7,7 +7,7 @@ namespace face {
 
 void begin();
 void loop();                                    // clears timed balloons
-bool setExpression(const String &name);         // neutral happy sad angry doubt sleepy surprised
+bool setExpression(const String &name);         // neutral happy sad angry doubt sleepy surprised listening thinking
 bool setStyle(const String &name);
 void gaze(float vertical, float horizontal);    // -1..1; idle glances resume after 5 s
 void mouth(float open);                         // 0..1

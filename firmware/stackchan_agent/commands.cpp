@@ -4,6 +4,7 @@
 #include <WiFi.h>
 #include <mbedtls/base64.h>
 
+#include "audio.h"
 #include "camera.h"
 #include "face.h"
 #include "net.h"
@@ -178,6 +179,16 @@ const char *run(int ch, const String &cmd, JsonVariantConst a, JsonObject r) {
     return nullptr;
   }
 
+  if (cmd == "mic.start") {      // WebSocket only: 'A' binary frames, 16 kHz mono int16, 40 ms each
+    if (ch == USB) return "mic streams over WebSocket only";
+    if (!audio::micStart(ch)) return "speaker is still playing";
+    r["rate"] = audio::RATE, r["chunk"] = audio::CHUNK;
+    return nullptr;
+  }
+  if (cmd == "mic.stop") { audio::micStop(); return nullptr; }
+  if (cmd == "speaker.stop") { audio::stop(); return nullptr; }
+  if (cmd == "speaker.volume") { audio::setVolume(a["volume"] | 180); return nullptr; }
+  if (cmd == "speaker.status") { r["playing"] = audio::playing(); r["mic"] = audio::micClient() >= 0; return nullptr; }
   if (cmd == "head.read") {   // raw 0..1023, deg = (raw - 512) * 300 / 1024
     JsonArray out = r["servos"].to<JsonArray>();
     for (int hid = 1; hid <= 2; hid++) {
@@ -326,15 +337,24 @@ void cameraLoop() {
     size_t n;
     uint32_t seq;
     if (!camera::latest(s.cam_seq, &jpg, &n, &seq, 0)) continue;   // no new frame yet
-    net::sendBinary(ch, jpg, n);
+    net::sendBinary(ch, 'J', jpg, n);
     free(jpg);
     s.cam_seq = seq, s.cam_next = millis() + s.cam_ms;
   }
   if (fastest) camera::want(fastest);
 }
 
+void micLoop() {
+  static int16_t chunk[audio::CHUNK];
+  int ch = audio::micClient();
+  if (ch < 0) return;
+  if (!net::clientConnected(ch)) { audio::micStop(); return; }
+  while (audio::micChunk(chunk)) net::sendBinary(ch, 'A', (const uint8_t *)chunk, sizeof(chunk));
+}
+
 void loop() {
   cameraLoop();
+  micLoop();
   for (int ch = USB; ch < net::MAX_CLIENTS; ch++) {
     Stream &s = streamFor(ch);
     if (!s.hz || (int32_t)(millis() - s.next) < 0) continue;

@@ -8,7 +8,7 @@
 namespace face {
 
 namespace {
-constexpr const char *EXPRESSIONS[] = {"neutral", "happy", "sad", "angry", "doubt", "sleepy", "surprised"};
+constexpr const char *EXPRESSIONS[] = {"neutral", "happy", "sad", "angry", "doubt", "sleepy", "surprised", "listening", "thinking"};
 constexpr uint32_t FRAME_MS = 40;
 
 LGFX_Sprite canvas(&M5.Display);

@@ -27,4 +27,12 @@ Rules:
 - Servo ids (suggested by `cad-gripper`): left shoulder 1, elbow 2, wrist 3, gripper 4; right shoulder 5, gripper 6.
 - Never run `wifi set` with a password in the command line or in a file in this repo.
 
+With a running `dash` that has an agent (`--llm-url`):
+```sh
+./stackchan agent say "look at the cup and nod"   # one agent turn, as if spoken
+./stackchan agent status                          # what it heard, its thinking, each step (ok / error / ms)
+./stackchan agent on | off
+./stackchan view simple | full                    # 3D twin body variant
+```
+
 Protocol details (for writing your own client): `docs/protocol.md`.

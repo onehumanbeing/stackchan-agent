@@ -2,6 +2,7 @@
 // Build / flash: ../../flash.sh.  Protocol: ../../docs/protocol.md.
 #include <M5Unified.h>
 
+#include "audio.h"
 #include "camera.h"
 #include "commands.h"
 #include "face.h"
@@ -31,11 +32,13 @@ void setup() {
   M5.Power.setExtOutput(true);   // 5 V on the Grove ports (the bus adapter may take its logic power from there)
   Serial.begin(115200);
   face::begin();
+  audio::begin();
   bool cam = camera::begin();
   commands::begin();
   if (!cam) face::say("camera failed", 4000);
   net::begin([](int ch, const char *text, size_t len) { commands::handleLine(ch, text, len); },
-             [](int ch, bool connected) { commands::onClient(ch, connected); });
+             [](int ch, bool connected) { commands::onClient(ch, connected); },
+             [](int ch, uint8_t type, const uint8_t *data, size_t len) { if (type == 'S') audio::play(data, len); });
   commands::hello(commands::USB);
 }
 
@@ -44,6 +47,7 @@ void loop() {
   pollUsb();
   net::loop();
   commands::loop();
+  audio::loop();
   face::loop();
   static bool was_connected = false;
   if (net::connected() != was_connected) {
