@@ -23,8 +23,9 @@ BEATS = 23                   # length: 23 beats = 10.2 s; the song (20 s) is cut
 FADE_S = 1.2                 # music fade-out at the end
 MUSIC = Path.home() / ".cache" / "stackchan-agent" / "dance.mp3"
 VOLUME = 200                 # speaker 0..255 (the agent uses 180)
-ARM_MAX, YAW_MAX, PITCH_MAX = 100, 28, 18    # deg from neutral; arms: 0 = down, toward the middle of travel
+ARM_MAX, YAW_MAX, PITCH_MAX = 100, 28, 30    # deg from neutral; arms: 0 = down, toward the middle of travel
 ARM_SPEED_MAX = 3200         # STS steps/s (~280 deg/s)
+HEAD_SNAP_S = 0.12           # the head snaps to each pose this fast, then holds it (crisper than gliding)
 ARM_ACC = 200                # x100 steps/s^2: the soft start / stop of every arm move (60 was too soft: arms fell behind the beat)
 ARMS = {"l": 1, "r": 5}      # servo ids: left, right shoulder
 RATE = 16000
@@ -35,15 +36,15 @@ def _timeline():
     t = [(-1.0, {"l": 0, "r": 0, "yaw": 0, "pitch": 0}, "neutral")]
     add = lambda b, face=None, **pose: t.append((b, pose, face))
 
-    def bounce(b, side, hi=60, lo=30, yaw=16):      # weight shifts to one side; the head bobs: down on the beat,
-        add(b, l=hi if side > 0 else lo, r=lo if side > 0 else hi, yaw=yaw * side, pitch=-8)
-        add(b + 0.5, yaw=yaw * side * 0.4, pitch=10)    # up and back toward the middle on the "and"
+    def bounce(b, side, hi=60, lo=30, yaw=18):      # a DJ head bob: nod down hard on the beat, then throw the head
+        add(b, l=hi if side > 0 else lo, r=lo if side > 0 else hi, yaw=yaw * side * 0.3, pitch=-12)
+        add(b + 0.5, yaw=yaw * side, pitch=26)          # up and swing it to one side on the "and"; arms shift weight
 
-    add(0, "excited", l=20, r=20, pitch=-8)          # 0-2: crouch, arms to the ready pose, eyes light up
-    add(1, l=40, r=40, pitch=12)
+    add(0, "excited", l=20, r=20, pitch=-12)          # 0-2: crouch, arms to the ready pose, eyes light up
+    add(1, l=40, r=40, pitch=26)
     for b in range(2, 6):
         bounce(b, 1 if b % 2 else -1)
-    add(6, l=100, r=100, yaw=0, pitch=18)            # hit 1: both arms up, head up, then a head wiggle
+    add(6, l=100, r=100, yaw=0, pitch=30)            # hit 1: both arms up, head up, then a head wiggle
     add(6.5, yaw=12)
     add(7, l=45, r=45, yaw=-12, pitch=0)
     add(7.5, yaw=0)
@@ -52,18 +53,18 @@ def _timeline():
     add(12, l=80, r=20, yaw=20, pitch=-6)            # the drop: two big swings, freeze, open up on the strong beat
     add(13, l=30, r=80, yaw=-20, pitch=-6)
     add(13.25, r=80, yaw=-20, pitch=-6)              # freeze a quarter beat (the left arm already rises to open up)
-    add(14, "surprised", l=95, r=95, yaw=0, pitch=18)
+    add(14, "surprised", l=95, r=95, yaw=0, pitch=30)
     add(14.5, "excited")
     add(15, l=45, r=45, pitch=0)
-    add(16, "wink", l=100, r=30, yaw=18, pitch=10)   # a wave, left -> right -> left; the head follows the high arm
-    add(16.5, pitch=-4)
-    add(17, l=30, r=100, yaw=-18, pitch=10)
-    add(17.5, pitch=-4)
-    add(18, l=100, r=30, yaw=18, pitch=10)
-    add(18.5, pitch=-4)
+    add(16, "wink", l=100, r=30, yaw=18, pitch=22)   # a wave, left -> right -> left; the head follows the high arm
+    add(16.5, pitch=-10)
+    add(17, l=30, r=100, yaw=-18, pitch=22)
+    add(17.5, pitch=-10)
+    add(18, l=100, r=30, yaw=18, pitch=22)
+    add(18.5, pitch=-10)
     add(19, "happy", l=45, r=45, yaw=0, pitch=0)
-    add(20, l=100, r=20, yaw=0, pitch=15)            # one arm high, one low: freeze half a beat
-    add(20.5, l=100, r=20, yaw=0, pitch=15)
+    add(20, l=100, r=20, yaw=0, pitch=26)            # one arm high, one low: freeze half a beat
+    add(20.5, l=100, r=20, yaw=0, pitch=26)
     add(22, "neutral", l=0, r=0, yaw=0, pitch=0)     # together back to neutral, on the last strong beat
     return sorted(t, key=lambda f: f[0])
 
@@ -108,7 +109,8 @@ def schedule(amp=1.0):
             v = max(LIMITS[k][0], min(LIMITS[k][1], v * amp))
             pb, pv = last.get(k, (b - 1, None))
             if v != pv:
-                events.append(("move", beat_s(pb), k, v, max(0.08, beat_s(b) - beat_s(pb)), pv, b))
+                t0 = beat_s(pb) if k in ARMS else max(beat_s(pb), beat_s(b) - HEAD_SNAP_S)   # the head snaps in late, on the beat
+                events.append(("move", t0, k, v, max(0.08, beat_s(b) - t0), pv, b))
             last[k] = (b, v)
     return sorted(events, key=lambda e: e[1])
 
@@ -173,7 +175,7 @@ class Dance:
             speed = max(100, int(arm_speed(steps, dur) or ARM_SPEED_MAX)) if frm is not None else 600
             return "servo.move", dict(id=sid, deg=zero + up * value, speed=speed, acc=ARM_ACC)
         hid = 1 if key == "yaw" else 2
-        return "head.move", dict(id=hid, deg=h.get(f"{key}_zero", 0) + h.get(f"{key}_sign", 1) * value, ms=int(dur * 1000))
+        return "head.move", dict(id=hid, deg=h.get(f"{key}_zero", 0) + h.get(f"{key}_sign", 1) * value, ms=int(min(dur, HEAD_SNAP_S) * 1000))
 
     def _start_music(self):
         """Start the song; returns the clock's zero (the moment it is heard), or now if there is no music."""
