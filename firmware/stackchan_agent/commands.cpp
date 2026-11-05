@@ -6,6 +6,7 @@
 
 #include "audio.h"
 #include "camera.h"
+#include "dance.h"
 #include "face.h"
 #include "net.h"
 #include "settings.h"
@@ -185,8 +186,15 @@ const char *run(int ch, const String &cmd, JsonVariantConst a, JsonObject r) {
     return nullptr;
   }
 
+  if (cmd == "dance.play") return dance::play(a["name"] | "dance_1");
+  if (cmd == "dance.stop") { dance::stop(); return nullptr; }
+  if (cmd == "dance.status") { dance::status(r); return nullptr; }
+  if (cmd == "dance.list") { dance::list(r); return nullptr; }
+  if (cmd == "dance.delete") return dance::remove(a["name"] | "") ? nullptr : "no such dance";
+
   if (cmd == "mic.start") {      // WebSocket only: 'A' binary frames, 16 kHz mono int16, 40 ms each
     if (ch == USB) return "mic streams over WebSocket only";
+    if (dance::playing()) return "it is dancing";
     if (!audio::micStart(ch)) return "speaker is still playing";
     r["rate"] = audio::RATE, r["chunk"] = audio::CHUNK;
     return nullptr;
@@ -211,9 +219,7 @@ const char *run(int ch, const String &cmd, JsonVariantConst a, JsonObject r) {
     if (hid < 1 || hid > 2) return "id must be 1 (yaw) or 2 (pitch)";
     int raw = a["raw"].is<int>() ? a["raw"].as<int>() : 512 + lroundf((a["deg"] | 0.0f) * 1024 / 300);
     raw = constrain(raw, 0, 1023);
-    int ms = a["ms"] | 400;
-    uint8_t d[6] = {(uint8_t)(raw >> 8), (uint8_t)raw, (uint8_t)(ms >> 8), (uint8_t)ms, 0, 0};
-    if (!head.write8(hid, sts::TORQUE_ENABLE, 1) || !head.write(hid, sts::GOAL_POS, d, 6)) return "no reply";
+    if (!moveHead(hid, raw, a["ms"] | 400)) return "no reply";
     r["raw"] = raw;
     return nullptr;
   }
@@ -301,6 +307,22 @@ const char *run(int ch, const String &cmd, JsonVariantConst a, JsonObject r) {
   return "unknown command";
 }
 }  // namespace
+
+bool moveHead(int hid, int raw, int ms) {
+  raw = constrain(raw, 0, 1023);
+  uint8_t d[6] = {(uint8_t)(raw >> 8), (uint8_t)raw, (uint8_t)(ms >> 8), (uint8_t)ms, 0, 0};
+  return head.write8(hid, sts::TORQUE_ENABLE, 1) && head.write(hid, sts::GOAL_POS, d, 6);
+}
+
+void moveArms(const uint8_t *ids, const int *raws, int n, int speed, int acc) {
+  int lim[8];
+  for (int i = 0; i < n && i < 8; i++) {
+    int lo, hi;
+    settings::limits(ids[i], lo, hi);
+    lim[i] = constrain(raws[i], lo, hi);
+  }
+  bus.syncMove(ids, lim, min(n, 8), speed, acc);
+}
 
 void begin() {
   bool ok = detectBus();

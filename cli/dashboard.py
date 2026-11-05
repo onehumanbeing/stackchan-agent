@@ -288,7 +288,12 @@ def dance_api(robot, agent, q):
         return {"ok": False, "error": "already dancing"}
     if agent and not agent.idle.is_set():
         return {"ok": False, "error": "the agent is busy; try again when it is idle"}
-    d = dance.Dance(robot, robot.snapshot().get("calibration", {}), float(q.get("amp", 1)), int(q.get("loop", 1)))
+    import dance_bake
+    cal, amp = robot.snapshot().get("calibration", {}), float(q.get("amp", 1))
+    if not q.get("stream") and amp == 1 and dance_bake.current(cal):
+        d = dance_bake.OnRobot(robot, loops=int(q.get("loop", 1)))      # stored on the robot: one command
+    else:
+        d = dance.Dance(robot, cal, amp, int(q.get("loop", 1)))
     was_on = agent.on if agent else False
 
     def go():
@@ -302,7 +307,8 @@ def dance_api(robot, agent, q):
     d.thread = threading.Thread(target=go, daemon=True)
     DANCING["dance"] = d
     d.thread.start()
-    return {"ok": True, "dancing": True, "amp": d.amp, "loops": d.loops, "seconds": round(dance.beat_s(dance.BEATS) * d.loops, 1)}
+    return {"ok": True, "dancing": True, "on_robot": isinstance(d, dance_bake.OnRobot), "amp": d.amp, "loops": d.loops,
+            "seconds": round(dance.beat_s(dance.BEATS) * d.loops, 1)}
 
 
 def serve(host, ids, hz, fps, listen, port, llm=None, qr=None):

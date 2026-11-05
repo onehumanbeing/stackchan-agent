@@ -165,14 +165,14 @@ brew install whisper-cpp ffmpeg              # 语音识别（本地）
 surprised、scared、dizzy、sleepy、sigh、bored、listening、thinking、daydream、yawn、doze。
 
 - 眼睛会自己呼吸、眨眼、四处看。
-- 15 秒没有输入就会发呆、打哈欠；2 分钟后打瞌睡。
+- 5 秒没有输入就打瞌睡（偶尔会被惊醒一下）。
 - agent 说每句话都会选对应的表情，一次回复中会多次变化。
 
 ```sh
 ./stackchan face --list                # 所有表情
 ./stackchan face demo                  # 依次播放全部表情
 ./stackchan face happy --say "hi" --ms 3000
-./stackchan face --idle on | off       # 15 秒无输入后自己发呆
+./stackchan face --idle on | off       # 5 秒无输入后自己打瞌睡
 ```
 
 **表情风格。** 表情引擎（`face.cpp`）负责眨眼、视线和表情动画；风格只负责把一帧画到 320 × 240 的 sprite 上。
@@ -192,6 +192,11 @@ surprised、scared、dizzy、sleepy、sigh、bored、listening、thinking、dayd
 ./stackchan dance                # 完整版；--loop 3 无缝循环
 ./stackchan dance stop           # 急停：停音乐，舵机缓慢回中立位
 ```
+
+**存在机器人上。** `./stackchan --host stackchan.local dance upload` 会把舞蹈（舵机曲线、表情、音乐）打包成机器人上的一个文件
+（`dance_1`，约 320 KB）。之后机器人按自己的时钟跳：一条 `dance.play` 命令，或者**按住屏幕 1 秒**（轻点一下停止），
+所以不连电脑、只用电池也能跳。存的版本是最新时 dash 直接让机器人播放，否则从电脑实时发送（`--stream` 强制实时发送）；
+改了编舞、标定或音乐后要重新上传。
 
 它通过正在运行的 `dash` 执行，跳舞期间暂停 agent 和语音。编舞、节拍（`BPM`、`MUSIC_OFFSET_S` = 第一拍、`BEATS`）、
 限幅、手臂速度和音量都在 `cli/dance.py` 顶部。音乐不在仓库里：把音频放到 `~/.cache/stackchan-agent/dance.mp3`；

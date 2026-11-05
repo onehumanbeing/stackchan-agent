@@ -9,7 +9,7 @@ namespace face {
 
 namespace {
 constexpr uint32_t FRAME_MS = 40;
-constexpr uint32_t IDLE_AFTER_MS = 15000, DOZE_AFTER_MS = 120000;   // nobody talks to it: daydream, then doze
+constexpr uint32_t IDLE_AFTER_MS = 5000, DOZE_AFTER_MS = 5000;   // nobody talks to it for 5 s: it dozes off (no daydream stage)
 
 LGFX_Sprite canvas(&M5.Display);
 SemaphoreHandle_t lock;

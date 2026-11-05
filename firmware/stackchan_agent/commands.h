@@ -13,5 +13,7 @@ void loop();                                           // state streams
 void handleLine(int ch, const char *line, size_t len);
 void onClient(int ch, bool connected);                 // hello on connect, drops the stream on close
 void hello(int ch);
+bool moveHead(int hid, int raw, int ms);              // head servo 1 (yaw) / 2 (pitch), raw 0..1023, travel ms
+void moveArms(const uint8_t *ids, const int *raws, int n, int speed, int acc);   // one sync write, soft limits applied
 
 }  // namespace commands

@@ -219,8 +219,10 @@ def main(argv=None):
                    help="how much the model reasons before acting: low (fast, default), high, off (fastest)")
     p.add_argument("--lang", choices=["zh", "en"], default=os.environ.get("STACKCHAN_LANG", "en"),
                    help="language the agent speaks; switch at runtime with `stackchan agent lang zh|en`")
-    p = sub.add_parser("dance", help="the default dance with its music, through a running dash; `dance stop` = emergency stop")
-    p.add_argument("action", nargs="?", choices=["stop"])
+    p = sub.add_parser("dance", help="the default dance with its music, through a running dash; `dance stop` = emergency stop; "
+                                     "`dance upload` stores it on the robot (it then dances on its own, also from a 1 s screen hold)")
+    p.add_argument("action", nargs="?", choices=["stop", "upload"])
+    p.add_argument("--stream", action="store_true", help="stream it from this computer even when the robot has it stored")
     p.add_argument("--dry-run", action="store_true", help="print the timeline and check limits; no robot")
     p.add_argument("--amp", type=float, default=1.0, help="amplitude 0..1 (0.5 for a first careful run)")
     p.add_argument("--loop", type=int, default=1)
@@ -243,13 +245,13 @@ def main(argv=None):
     if a.cmd == "dance" and a.dry_run:
         import dance
         return 0 if dance.dry_run(a.amp) else 1
-    if a.cmd in ("view", "agent", "dance"):     # these talk to a running `dash`, not to the robot
+    if a.cmd in ("view", "agent", "dance") and not (a.cmd == "dance" and a.action == "upload"):   # via a running `dash`
         import urllib.parse
         import urllib.request
         if a.cmd == "view":
             q = f"/api/body?set={a.body}"
         elif a.cmd == "dance":
-            q = "/api/dance?stop=1" if a.action == "stop" else f"/api/dance?amp={a.amp}&loop={a.loop}"
+            q = "/api/dance?stop=1" if a.action == "stop" else f"/api/dance?amp={a.amp}&loop={a.loop}" + "&stream=1" * a.stream
         else:
             q = "/api/agent?" + {"on": "on=1", "off": "on=0", "status": "", "lang": "lang=" + "".join(a.text)}.get(
                 a.action, "say=" + urllib.parse.quote_plus(" ".join(a.text)))
@@ -290,6 +292,13 @@ def main(argv=None):
             out(rq("servo.torque", id=a.id, on=a.state == "on"))
         elif a.cmd == "set-id":
             out(rq("servo.set_id", id=a.id, new_id=a.new_id))
+        elif a.cmd == "dance":                   # upload (the rest goes through the dash, above)
+            if not link.ws:
+                out({"ok": False, "error": "upload needs Wi-Fi: add --host"})
+                return 1
+            import dance_bake
+            cal = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "calibration.json")))
+            out(dance_bake.upload(link, cal, out=lambda *x, **k: print(*x, **k, file=sys.stderr, flush=True)))
         elif a.cmd == "center":
             out(rq("servo.center", id=a.id))
         elif a.cmd == "limits":

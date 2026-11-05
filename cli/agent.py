@@ -150,6 +150,8 @@ class Agent(threading.Thread):
             act["skipped"] = "no-motion"
             return
         ms = max(150, min(1500, int(act.get("ms", 500))))
+        if do in ("gesture", "head", "arm"):          # its own move: the talking hands (talk_motion.py) hold off
+            self.motion_until = time.monotonic() + (3.0 if do == "gesture" else ms / 1000 + 0.3)
         if "say" in act:
             self._pub(say=act["say"])
             if act.get("face"):

@@ -12,7 +12,7 @@ Several clients can be connected at once (USB + up to 4 WebSocket clients). Each
 | Request | `{"id": 7, "cmd": "servo.move", "args": {"id": 1, "deg": 10}}` (`id` optional, echoed back) |
 | Reply | `{"id": 7, "ok": true, "result": {...}}`, or `{"id": 7, "ok": false, "error": "no reply"}` |
 | Event | `{"ev": "hello" \| "state" \| "fault", ...}` (no `id`) |
-| Binary frame | WebSocket only. First byte is the type: `J` camera JPEG (after `camera.start`), `A` microphone audio (after `mic.start`), `S` speaker audio (client → robot). Audio: 16 kHz mono int16 little endian. |
+| Binary frame | WebSocket only. First byte is the type: `J` camera JPEG (after `camera.start`), `A` microphone audio (after `mic.start`), `S` speaker audio (client → robot), `U` dance file upload (client → robot, see `dance.*`). Audio: 16 kHz mono int16 little endian. |
 
 ## Units
 - Position `raw`: 0..4095 over 360°. `deg`: (raw − 2048) × 360 / 4096, so 0° is the middle of travel.
@@ -53,6 +53,11 @@ Several clients can be connected at once (USB + up to 4 WebSocket clients). Each
 | `speaker.status` | – | `playing`, `mic` |
 | `speaker.stop` | – | – (drops queued audio) |
 | `speaker.volume` | `volume` (0..255, 180) | – |
+| `dance.list` | – | `dances: [{name, bytes, seconds}]`, `free` (bytes) |
+| `dance.play` | `name` (`dance_1`) | – (it eases into the first pose, then plays music, servos and faces on its own clock; holding the screen 1 s does the same for `dance_1`, a tap stops it) |
+| `dance.stop` | – | – (music off, servos ease to the neutral pose) |
+| `dance.status` | – | `playing`, `name`, `t`, `seconds` |
+| `dance.delete` | `name` | – |
 | `wifi.scan` | – | `networks: [{ssid, rssi, open}]`, strongest first |
 | `wifi.set` | `ssid`, `pass` | – (**USB only**; up to 5 networks in NVS; passwords are never sent back) |
 | `wifi.forget` | `ssid` | – |
@@ -65,6 +70,8 @@ Several clients can be connected at once (USB + up to 4 WebSocket clients). Each
   `{"ev":"state","t":12345,"servos":[{"id":1,"pos":2050,"deg":0.2,"speed":0,"load":-12,"volt":12.1,"temp":31,"moving":false}]}`.
   A servo that does not answer is left out of `servos`.
 - `fault`: `{"ev":"fault","id":3,"fault":"no reply"}` when a streamed servo stops answering, `"back"` when it answers again.
+- `upload`: `{"ev":"upload","name":"dance_1","got":12288,"total":320352,"done":false}` after each `U` frame (`error` on failure).
+  A `U` frame is `u8 n, name[n], u32 offset, u32 total, bytes` (≤ 15 KB); chunks go in order from offset 0. File layout: `firmware/stackchan_agent/dance.h`.
 
 ## Safety
 - Every move is clamped to the servo's soft limits (`servo.limits`).

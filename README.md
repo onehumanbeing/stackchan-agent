@@ -170,14 +170,14 @@ To write your own client, use [docs/protocol.md](docs/protocol.md).
 doubt, curious, surprised, scared, dizzy, sleepy, sigh, bored, listening, thinking, daydream, yawn, doze.
 
 - The eyes breathe, blink and glance on their own.
-- After 15 s without input it daydreams and yawns; after 2 min it dozes off.
+- After 5 s without input it dozes off (and is now and then startled awake for a moment).
 - The agent picks the expression for every sentence it says, and changes it during a reply.
 
 ```sh
 ./stackchan face --list                # all expressions
 ./stackchan face demo                  # play them all
 ./stackchan face happy --say "hi" --ms 3000
-./stackchan face --idle on | off       # daydream on its own after 15 s without input
+./stackchan face --idle on | off       # doze off on its own after 5 s without input
 ```
 
 **Face styles.** The face engine (`face.cpp`) animates blinking, gaze and expressions; a style only draws one frame
@@ -198,6 +198,12 @@ where `start` is the moment the robot starts playing; if the music is missing, t
 ./stackchan dance                # full;  --loop 3 repeats it seamlessly
 ./stackchan dance stop           # emergency stop: music off, servos ease back to neutral
 ```
+
+**On the robot.** `./stackchan --host stackchan.local dance upload` bakes the dance (servo curves, faces, music) into a
+file on the robot (`dance_1`, about 320 KB). The robot then dances on its own clock: one `dance.play` command, or
+**hold the screen for 1 s** (a tap stops it), so it also dances on battery with no computer around. The dash plays the
+stored copy when it is current and streams the dance from the computer otherwise (`--stream` forces that); upload
+again after changing the choreography, the calibration or the music.
 
 It goes through a running `dash`, which pauses the agent and voice while it dances. The choreography, tempo
 (`BPM`, `MUSIC_OFFSET_S` = first beat, `BEATS`), limits, arm speed and volume are at the top of `cli/dance.py`.

@@ -22,6 +22,8 @@ import urllib.request
 import wave
 from pathlib import Path
 
+from talk_motion import Talk
+
 RATE, CHUNK_S = 16000, 0.04
 WAKE = re.compile(r"(?:^[\s,.!]*|(?:hey|hi|hay|hei|a|ay|eh|ok|okay|嘿|黑|嗨|哈)[\s,.!，。！、]*)(?<![a-z])(buddy|buddie|buddi|budy|bodhi|bodie|baddy|巴迪|巴蒂|八迪)(?![a-z])"
                   r"|(?:hey|hi|嘿|嗨)[\s,.!，。！、]*(body|bud|betty|birdie)(?![a-z])", re.I)
@@ -170,11 +172,16 @@ class Voice(threading.Thread):
         prev, self.mode = self.mode, "busy"
         self.robot.send_audio(pcm)
         self.robot.request("face.set", mouth=0.7)          # the eyes bob while it talks
+        talk = None
+        if self.agent.motion and text not in HEARD.values():   # small talking hands / nods (talk_motion.py)
+            talk = Talk(self.robot, self.agent, pcm).start()
         time.sleep(len(pcm) / (2 * RATE) + 0.3)
         for _ in range(30):                      # until the robot's queue is empty
             if not self.robot.request("speaker.status").get("playing"):
                 break
             time.sleep(0.1)
+        if talk:
+            talk.stop()
         self.robot.request("face.set", mouth=0)
         self.mode = prev if prev != "busy" else "idle"
         self.deaf_until = time.monotonic() + 0.4

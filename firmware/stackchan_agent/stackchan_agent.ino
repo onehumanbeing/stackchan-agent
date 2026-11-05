@@ -5,6 +5,7 @@
 #include "audio.h"
 #include "camera.h"
 #include "commands.h"
+#include "dance.h"
 #include "face.h"
 #include "net.h"
 
@@ -35,10 +36,14 @@ void setup() {
   audio::begin();
   bool cam = camera::begin();
   commands::begin();
+  dance::begin();
   if (!cam) face::say("camera failed", 4000);
   net::begin([](int ch, const char *text, size_t len) { commands::handleLine(ch, text, len); },
              [](int ch, bool connected) { commands::onClient(ch, connected); },
-             [](int ch, uint8_t type, const uint8_t *data, size_t len) { if (type == 'S') audio::play(data, len); });
+             [](int ch, uint8_t type, const uint8_t *data, size_t len) {
+               if (type == 'S') audio::play(data, len);
+               else if (type == 'U') dance::upload(ch, data, len);
+             });
   commands::hello(commands::USB);
 }
 
@@ -47,6 +52,7 @@ void loop() {
   pollUsb();
   net::loop();
   commands::loop();
+  dance::loop();
   audio::loop();
   face::loop();
   static bool was_connected = false;

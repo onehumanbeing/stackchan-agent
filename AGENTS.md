@@ -41,3 +41,5 @@ With a running `dash` that has an agent (`--llm-url`):
 ```
 
 Protocol details (for writing your own client): `docs/protocol.md`.
+- The stored dance (`dance upload`) bakes in the choreography, calibration and music: upload again after changing any of them (the dash streams instead while the stored copy is out of date).
+- While it speaks, `cli/talk_motion.py` adds small arm flicks / head nods on stressed syllables; keep them small (LEGO arms can shake loose).
