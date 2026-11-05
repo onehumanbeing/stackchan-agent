@@ -215,8 +215,9 @@ set its BPM and first beat, then check with `--dry-run`.
 Enabled with `--whisper-model` (a whisper.cpp ggml model). Everything runs locally and uses the robot's own mic and
 speaker.
 
-- Say **"Hey Buddy"** to wake it: it answers, looks up (and lifts its head a little when it is free), then listens
-  for the command.
+- Say **"Hey Buddy"** to wake it: it shows "Listening…", looks up, lifts its head a little and brings its arms to rest
+  (45° forward). It does not answer out loud, so the mic stays open and a quick "Hey Buddy … can you dance?" is heard
+  whole. After every reply the arms go back to rest.
 - After answering it keeps listening for about 8 s, so a follow-up needs no wake word.
 - `--lang zh|en` picks the language it speaks and listens for; switch at runtime with `./stackchan agent lang zh|en`.
 - Speech-to-text: whisper.cpp (`whisper-server`, started by the CLI). Text-to-speech: Kokoro (`--tts-voice`, default

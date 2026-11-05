@@ -20,6 +20,7 @@ import llm
 from journal import Journal
 
 STEP_S = 1.0
+REST_DEG = 45                # the arms' rest pose (deg up from hanging down): after every turn and on the wake word
 SYSTEM = """You are StackChan, a small, cute desk robot: a cube head with two eyes on a screen, two arms, wheels.
 You see through the camera in your face. Reply ONLY with JSON objects, one per line, no other text:
 {"say": "...", "face": E} {"do": "face", "expression": E, "ms": 800} {"do": "gesture", "name": G}
@@ -32,7 +33,7 @@ head yaw -30..30 (+ = your left), pitch -10..15 (+ = up); 0, 0 is looking straig
 head and arm steps take "ms": 150..1500 (how long the move takes; short = quick).
 Decide the movement yourself from what you hear and see.  If no gesture fits, compose it from head / arm steps,
 and do exactly what is asked (e.g. "shake your head twice" = yaw 20, -20, 20, -20, 0 with ms 250).
-End facing ahead with arms down.  Start with a short "say" (one sentence), then at most 10 steps. Think briefly. %s"""
+End facing ahead; your arms go back to rest by themselves.  Start with a short "say" (one sentence), then at most 10 steps. Think briefly. %s"""
 FACES = ["neutral", "happy", "sad", "angry", "doubt", "sleepy", "surprised"]   # older firmware
 LANGS = {"zh": "Always speak Mandarin Chinese (简体中文), whatever language you hear.", "en": "Always speak English."}
 
@@ -110,9 +111,23 @@ class Agent(threading.Thread):
         self.history += [{"role": "user", "content": f"Heard: {text!r}"}, {"role": "assistant", "content": answer}]
         self.journal.write({"heard": text, "thinking": self.view["thinking"], "answer": answer, "steps": steps,
                             "state": self._state(), "seconds": round(time.time() - t0, 2)}, jpeg)
+        if self.motion and not self.holding:
+            self.rest_arms()
         self._pub(status="idle", turns=self.view["turns"] + 1)
         if not any(s["act"].get("do") == "face" or s["act"].get("face") for s in steps):
             self.robot.request("face.set", expression="neutral")
+
+    def rest_arms(self, speed=800, acc=30):
+        """Both arms to the rest pose (REST_DEG forward)."""
+        snap = self.robot.snapshot()
+        joints, servos = snap.get("calibration", {}).get("joints", {}), snap.get("servos", {})
+        for sid in ("1", "5"):
+            if sid in servos and sid in joints:
+                j = joints[sid]
+                try:
+                    self.robot.request("servo.move", id=int(sid), deg=j["zero"] + j.get("up", 1) * REST_DEG, speed=speed, acc=acc)
+                except (RuntimeError, TimeoutError):
+                    pass
 
     def _expressions(self):
         """The firmware's expression list (face.expressions), asked once."""
