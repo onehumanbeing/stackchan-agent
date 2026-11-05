@@ -2,7 +2,7 @@
 
 Mic audio arrives as 16 kHz int16 chunks (robot.on_audio).  An energy VAD cuts it into utterances;
 whisper.cpp (whisper-server, started here, local) transcribes them.  While idle, an utterance that
-starts with the wake phrase ("Hey Grok") wakes the robot: it answers, looks up and, when it has nothing
+starts with the wake phrase ("Hey Buddy") wakes the robot: it answers, looks up and, when it has nothing
 else to do, lifts its head a little until the command is in.  The next utterance goes to the agent.
 Replies are spoken with a local TTS (Kokoro, else macOS `say`) and
 streamed to the robot's speaker; the mic is off while it speaks (the board is half duplex).
@@ -23,11 +23,11 @@ import wave
 from pathlib import Path
 
 RATE, CHUNK_S = 16000, 0.04
-WAKE = re.compile(r"(?:(?:hey|hi|hay|hei|a|ay|eh|ok|okay|嘿|黑|嗨|哈)[\s,.!，。！、]*)?(?<![a-z])(grok|grock|groq|grog|grokk|groc|grob|grov|crok|gork|gorc|gorq|grook|gruk|格罗克|格洛克|葛洛克|格鲁克)"
-                  r"|(?:hey|hi|嘿|黑)[\s,.!，。！、]*(rock|brock|crock|croc|grow|grove|work|格罗|葛)|\bhank,? work\b", re.I)
+WAKE = re.compile(r"(?:^[\s,.!]*|(?:hey|hi|hay|hei|a|ay|eh|ok|okay|嘿|黑|嗨|哈)[\s,.!，。！、]*)(?<![a-z])(buddy|buddie|buddi|budy|bodhi|bodie|baddy|巴迪|巴蒂|八迪)(?![a-z])"
+                  r"|(?:hey|hi|嘿|嗨)[\s,.!，。！、]*(body|bud|betty|birdie)(?![a-z])", re.I)
 MUSIC = re.compile(r"\bmusic\b|音乐", re.I)    # a spoken command with this starts the dance (dance.py)
 PREROLL_S = 0.4              # audio kept from before the level rises, so soft starts ("Hey") are not cut
-# No whisper --prompt: with "Hey Grok" as a prompt it hears "Grok." in silence and servo noise.
+# No whisper --prompt: with "Hey Buddy" as a prompt it hears "Buddy." in silence and servo noise.
 HEARD = {"zh": "我在听", "en": "Listening"}
 LIFT_DEG = 8
 WAKE_S, FOLLOW_S = 10, 8     # how long it waits for a command after the wake word / after answering
@@ -218,7 +218,7 @@ class Voice(threading.Thread):
                 continue
             self._unlift()
             self.mode = "busy"
-            if MUSIC.search(text):                   # "Hey Grok, music!": the default dance, no model involved
+            if MUSIC.search(text):                   # "Hey Buddy, music!": the default dance, no model involved
                 self._dance(text)
             else:
                 self.agent.hear(text)

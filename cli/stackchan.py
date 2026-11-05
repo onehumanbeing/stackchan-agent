@@ -212,7 +212,7 @@ def main(argv=None):
     p.add_argument("--no-record", action="store_true", help="do not write episodes to ~/.stackchan/episodes")
     p.add_argument("--no-motion", action="store_true", help="agent thinks and changes faces but never moves a servo (except a small head lift on wake-up)")
     p.add_argument("--whisper-model", default=os.environ.get("STACKCHAN_WHISPER_MODEL"),
-                   help="whisper.cpp ggml model: enables voice (wake word 'Hey Grok', robot mic + speaker)")
+                   help="whisper.cpp ggml model: enables voice (wake word 'Hey Buddy', robot mic + speaker)")
     p.add_argument("--tts-voice", default=os.environ.get("STACKCHAN_TTS_VOICE"),
                    help="Kokoro voice (default af_heart / zf_xiaoxiao by language) or a macOS `say` voice")
     p.add_argument("--llm-think", choices=["low", "high", "off"], default="low",

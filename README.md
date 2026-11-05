@@ -128,7 +128,7 @@ brew install whisper-cpp ffmpeg              # speech-to-text (local)
   --whisper-model ~/models/ggml-large-v3-turbo.bin --agent --lang en
 ```
 
-Open `http://localhost:8765/` for the live page, then say "Hey Grok".
+Open `http://localhost:8765/` for the live page, then say "Hey Buddy".
 
 ## Use from a coding agent
 
@@ -189,7 +189,7 @@ Expressions live in `face_lib.cpp`.
 ## Dance
 
 A fixed, repeatable 20 s dance with its own music, played by the robot's speaker. No model is involved: the CLI starts
-it, or say "Hey Grok, music!" (any command with "music" / "音乐"); the agent itself never does. Poses sit on beats of one clock, `beat = (now - start - MUSIC_OFFSET_S) * BPM / 60`,
+it, or say "Hey Buddy, music!" (any command with "music" / "音乐"); the agent itself never does. Poses sit on beats of one clock, `beat = (now - start - MUSIC_OFFSET_S) * BPM / 60`,
 where `start` is the moment the robot starts playing; if the music is missing, the dance runs on the same clock alone.
 
 ```sh
@@ -209,7 +209,7 @@ set its BPM and first beat, then check with `--dry-run`.
 Enabled with `--whisper-model` (a whisper.cpp ggml model). Everything runs locally and uses the robot's own mic and
 speaker.
 
-- Say **"Hey Grok"** to wake it: it answers, looks up (and lifts its head a little when it is free), then listens
+- Say **"Hey Buddy"** to wake it: it answers, looks up (and lifts its head a little when it is free), then listens
   for the command.
 - After answering it keeps listening for about 8 s, so a follow-up needs no wake word.
 - `--lang zh|en` picks the language it speaks and listens for; switch at runtime with `./stackchan agent lang zh|en`.
