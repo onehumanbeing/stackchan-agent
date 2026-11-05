@@ -27,7 +27,7 @@ Updates: [X @iamhenryyuan](https://x.com/iamhenryyuan)
 
 *The 3D twin on the live page (`./stackchan dash`) mirrors the real servos; here the robot has dozed off.*
 
-<p align="center"><a href="https://www.youtube.com/watch?v=9UxHxHWFvw8"><img src="https://img.youtube.com/vi/9UxHxHWFvw8/hqdefault.jpg" alt="Video: StackChan Agent counts fingers, talks, moves and dances" width="60%"></a></p>
+<p align="center"><a href="https://www.youtube.com/watch?v=9UxHxHWFvw8"><img src="https://i.ytimg.com/vi/9UxHxHWFvw8/hqdefault.jpg" alt="Video: StackChan Agent counts fingers, talks, moves and dances" width="60%"></a></p>
 
 <p align="center"><b><a href="https://www.youtube.com/watch?v=9UxHxHWFvw8">▶ Watch it on YouTube</a></b>: "Hey Buddy", count my fingers, then dance.</p>
 
