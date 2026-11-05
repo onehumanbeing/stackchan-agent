@@ -23,8 +23,8 @@ import wave
 from pathlib import Path
 
 RATE, CHUNK_S = 16000, 0.04
-WAKE = re.compile(r"(?:(?:hey|hi|hay|hei|a|ay|eh|ok|okay|嘿|黑|嗨|哈)[\s,.!，。！、]*)?(?<![a-z])(grok|grock|groq|grog|grokk|groc|grob|grov|crok|格罗克|格洛克|葛洛克|格鲁克)"
-                  r"|(?:hey|hi|嘿|黑)[\s,.!，。！、]*(rock|brock|crock|croc|grow|grove|格罗|葛)", re.I)
+WAKE = re.compile(r"(?:(?:hey|hi|hay|hei|a|ay|eh|ok|okay|嘿|黑|嗨|哈)[\s,.!，。！、]*)?(?<![a-z])(grok|grock|groq|grog|grokk|groc|grob|grov|crok|gork|gorc|gorq|grook|gruk|格罗克|格洛克|葛洛克|格鲁克)"
+                  r"|(?:hey|hi|嘿|黑)[\s,.!，。！、]*(rock|brock|crock|croc|grow|grove|work|格罗|葛)|\bhank,? work\b", re.I)
 MUSIC = re.compile(r"\bmusic\b|音乐", re.I)    # a spoken command with this starts the dance (dance.py)
 PREROLL_S = 0.4              # audio kept from before the level rises, so soft starts ("Hey") are not cut
 # No whisper --prompt: with "Hey Grok" as a prompt it hears "Grok." in silence and servo noise.
