@@ -25,7 +25,7 @@ from pathlib import Path
 RATE, CHUNK_S = 16000, 0.04
 WAKE = re.compile(r"(?:^[\s,.!]*|(?:hey|hi|hay|hei|a|ay|eh|ok|okay|嘿|黑|嗨|哈)[\s,.!，。！、]*)(?<![a-z])(buddy|buddie|buddi|budy|bodhi|bodie|baddy|巴迪|巴蒂|八迪)(?![a-z])"
                   r"|(?:hey|hi|嘿|嗨)[\s,.!，。！、]*(body|bud|betty|birdie)(?![a-z])", re.I)
-MUSIC = re.compile(r"\bmusic\b|音乐", re.I)    # a spoken command with this starts the dance (dance.py)
+MUSIC = re.compile(r"\b(music|dance|dancing)\b|音乐|跳舞|跳个舞", re.I)    # a spoken command with this starts the dance (dance.py)
 PREROLL_S = 0.4              # audio kept from before the level rises, so soft starts ("Hey") are not cut
 # No whisper --prompt: with "Hey Buddy" as a prompt it hears "Buddy." in silence and servo noise.
 HEARD = {"zh": "我在听", "en": "Listening"}
@@ -127,6 +127,7 @@ class Voice(threading.Thread):
         self.mode = "idle"                       # idle (wake word) | listening (command) | busy
         self.buf, self.speech, self.silence, self.floor = bytearray(), False, 0.0, 200.0
         self.utterances, self.lifted, self.deaf_until, self.pre = [], None, 0.0, b""     # pitch to go back to after a wake-up lift
+        self.arms_before = None                  # {id: deg} before the wake word sent the arms home
         self.lock = threading.Condition()
         robot.on_audio = self.feed
         agent.speak = self.say
@@ -150,7 +151,8 @@ class Voice(threading.Thread):
         end = 0.5 if self.mode == "idle" else 0.8     # the wake phrase is short: answer it sooner
         if self.silence >= end or seconds > 12:
             self.speech = False
-            if seconds - PREROLL_S - self.silence >= 0.3:   # at least 0.3 s of actual sound
+            sound = seconds - PREROLL_S - self.silence
+            if sound >= (0.3 if self.mode == "idle" else 0.15):   # actual sound; a one-word command ("Dance") is short
                 with self.lock:
                     self.utterances.append(bytes(self.buf))
                     self.lock.notify()
@@ -217,6 +219,7 @@ class Voice(threading.Thread):
             elif not wordy(text):
                 continue
             self._unlift()
+            self.arms_before = None                  # a command came: the arms stay where it leaves them
             self.mode = "busy"
             if MUSIC.search(text):                   # "Hey Buddy, music!": the default dance, no model involved
                 self._dance(text)
@@ -247,10 +250,13 @@ class Voice(threading.Thread):
         self.agent._pub(status="listening")
 
     def _arms_home(self, snapshot):
-        """Arms back to home (hanging down, calibration zeros), quickly: it is ready to listen."""
-        joints = snapshot.get("calibration", {}).get("joints", {})
+        """Arms back to home (hanging down, calibration zeros), quickly: it is ready to listen.
+        Where they were is kept: if no command comes, _give_up puts them back."""
+        joints, servos = snapshot.get("calibration", {}).get("joints", {}), snapshot.get("servos", {})
+        if self.arms_before is None:
+            self.arms_before = {sid: servos[sid]["deg"] for sid in ("1", "5") if "deg" in servos.get(sid, {})}
         for sid in ("1", "5"):
-            if sid in snapshot.get("servos", {}) and sid in joints:
+            if sid in servos and sid in joints:
                 try:
                     self.robot.request("servo.move", id=int(sid), deg=joints[sid]["zero"], speed=2400, acc=60)
                 except (RuntimeError, TimeoutError):
@@ -261,9 +267,19 @@ class Voice(threading.Thread):
         if self.mode == "listening" and time.monotonic() > self.listen_until and not self.speech:
             self.mode = "idle"
             self._unlift()
+            self._arms_back()
             self.agent._pub(status="idle")
             try:
                 self.robot.request("face.set", expression="neutral")
+            except (RuntimeError, TimeoutError):
+                pass
+
+    def _arms_back(self):
+        """The wake word came but no command: the arms go back to where they were before it."""
+        before, self.arms_before = self.arms_before, None
+        for sid, deg in (before or {}).items():
+            try:
+                self.robot.request("servo.move", id=int(sid), deg=deg, speed=1200, acc=40)
             except (RuntimeError, TimeoutError):
                 pass
 

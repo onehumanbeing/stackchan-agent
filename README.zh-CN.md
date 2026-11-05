@@ -182,7 +182,7 @@ surprised、scared、dizzy、sleepy、sigh、bored、listening、thinking、dayd
 
 ## 舞蹈
 
-一段固定、每次都一样的 20 秒舞蹈，配乐由机器人自己的喇叭播放。全程不经过模型：用 CLI 启动，或者说 "Hey Buddy, music!"（指令里带 "music" / "音乐" 就行）；agent 自己不会触发。
+一段固定、每次都一样的 20 秒舞蹈，配乐由机器人自己的喇叭播放。全程不经过模型：用 CLI 启动，或者说 "Hey Buddy, music!"（指令里带 "music" / "dance" / "音乐" / "跳舞" 就行）；agent 自己不会触发。
 所有姿态都落在同一个时钟的拍点上：`beat = (now - start - MUSIC_OFFSET_S) * BPM / 60`，`start` 是机器人开始出声的时刻；
 没有音乐文件时，舞蹈照样按同一时钟跳完。
 
