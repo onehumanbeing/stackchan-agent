@@ -31,6 +31,13 @@
   .empty { color:var(--muted); padding:8px 0; }
   .hot { color:var(--warn); } .err { color:var(--bad); }
   .stack { display:grid; gap:16px; align-content:start; }
+  .label { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:10px 0 4px; }
+  .heard { font-size:16px; min-height:22px; }
+  .heard .say { display:block; color:var(--muted); font-size:14px; margin-top:4px; }
+  .think { font:12px/1.5 ui-monospace, Menlo, monospace; color:#b9b9b9; max-height:140px; overflow:auto; white-space:pre-wrap; }
+  .steps { margin:0; padding-left:20px; font:13px/1.6 ui-monospace, Menlo, monospace; }
+  .steps li.run { color:var(--warn); } .steps li.bad { color:var(--bad); } .steps .ms { color:var(--muted); }
+  .pill.busy { color:var(--warn); border-color:#5d4a26; }
   .twin-panel { grid-column:1; }
   #twin { height:46vh; min-height:280px; border-radius:10px; overflow:hidden; background:#0e0e0e; }
   .stack { grid-row:1 / span 2; grid-column:2; }
@@ -68,6 +75,14 @@
       <h2><span>Robot</span></h2>
       <div class="kv" id="info"></div>
     </section>
+    <section class="panel agent">
+      <h2><span>Agent</span><span id="agstat" class="pill">off</span></h2>
+      <div class="heard" id="heard"></div>
+      <div class="label">Thinking</div>
+      <div class="think" id="think"><span class="empty">–</span></div>
+      <div class="label">Steps</div>
+      <ol class="steps" id="steps"></ol>
+    </section>
     <section class="panel">
       <h2><span>Faults</span></h2>
       <div class="log" id="faults"><div class="empty">none</div></div>
@@ -77,7 +92,21 @@
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+function step(x) {
+  const a = x.act || {}, name = a.say != null ? "say" : a.do, args = Object.entries(a).filter(([k]) => k !== "do" && k !== "say").map(([k, v]) => `${k}=${v}`).join(" ");
+  const cls = x.ms == null ? "run" : (x.ok ? "" : "bad"), mark = x.ms == null ? "…" : (x.ok ? "✓" : "✗ " + esc(x.error || ""));
+  return `<li class="${cls}">${esc(name)} ${esc(a.say != null ? "“" + a.say + "”" : args)} ${mark} <span class="ms">${x.ms != null ? x.ms + " ms" : ""}</span></li>`;
+}
+function renderAgent(g) {
+  if (!g) return;
+  $("agstat").textContent = g.status; $("agstat").className = "pill " + (g.status === "off" ? "" : g.status === "idle" ? "ok" : "busy");
+  $("heard").innerHTML = g.heard ? `“${esc(g.heard)}”` + (g.say ? `<span class="say">${esc(g.say)}</span>` : "") : `<span class="empty">waiting for “hey dude”</span>`;
+  const t = $("think"), stick = t.scrollTop + t.clientHeight >= t.scrollHeight - 4;
+  t.textContent = g.thinking || "–"; if (stick) t.scrollTop = t.scrollHeight;
+  $("steps").innerHTML = (g.steps || []).map(step).join("");
+}
 function render(s) {
+  renderAgent(s.agent);
   if (window.twinUpdate) window.twinUpdate(s);
   $("link").textContent = s.connected ? "online" : ("offline" + (s.error ? " · " + s.error : ""));
   $("link").className = "pill " + (s.connected ? "ok" : "bad");

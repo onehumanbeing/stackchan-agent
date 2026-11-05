@@ -7,9 +7,11 @@ Endpoints: /  /state.json  /events (SSE)  /camera.mjpg  /camera.jpg  /face.jpg
 
 import base64
 import json
+import queue
 import socket
 import threading
 import time
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -18,6 +20,11 @@ PAGE = HERE / "dashboard.html"
 STATIC = {"/twin/scene.js": ("twin/scene.js", "text/javascript"), "/twin/model.js": ("twin/model.js", "text/javascript"),
           "/model.json": ("model/r7.json", "application/json")}
 CALIBRATION = HERE / "calibration.json"
+
+
+class Reply:
+    def __init__(self):
+        self.done, self.msg = threading.Event(), {}
 
 
 class Robot(threading.Thread):
@@ -32,6 +39,17 @@ class Robot(threading.Thread):
                       "calibration": cal, "body": cal.get("body", "simple")}
         self.jpeg = self.face = None
         self.frames = []
+        self.outbox = queue.Queue()          # (cmd, args, Reply) from other threads, e.g. the agent
+
+    def request(self, cmd, timeout=5.0, **args):
+        """Thread-safe command over the shared connection; returns the result or raises RuntimeError."""
+        reply = Reply()
+        self.outbox.put((cmd, args, reply))
+        if not reply.done.wait(timeout):
+            raise TimeoutError(f"{cmd}: no reply in {timeout} s")
+        if not reply.msg.get("ok"):
+            raise RuntimeError(f"{cmd}: {reply.msg.get('error')}")
+        return reply.msg.get("result", {})
 
     def snapshot(self):
         with self.lock:
@@ -65,9 +83,13 @@ class Robot(threading.Thread):
             rid = iter(range(1, 1 << 30))
             pending = {}
 
-            def ask(cmd, **args):
+            waiting = {}                     # request id -> Reply, for request()
+
+            def ask(cmd, reply=None, **args):
                 i = next(rid)
                 pending[i] = cmd
+                if reply:
+                    waiting[i] = reply
                 ws.send(json.dumps({"id": i, "cmd": cmd, "args": args}))
 
             ids = self.ids or []
@@ -88,8 +110,11 @@ class Robot(threading.Thread):
                 if now >= next_head:
                     ask("head.read")
                     next_head = now + 0.2
+                while not self.outbox.empty():
+                    c, args, reply = self.outbox.get_nowait()
+                    ask(c, reply, **args)
                 try:
-                    msg = ws.recv(timeout=0.2)
+                    msg = ws.recv(timeout=0.02)
                 except TimeoutError:
                     continue
                 if isinstance(msg, bytes):          # camera frame
@@ -99,6 +124,11 @@ class Robot(threading.Thread):
                     continue
                 m = json.loads(msg)
                 cmd = pending.pop(m.get("id"), None)
+                if m.get("id") in waiting:
+                    r = waiting.pop(m["id"])
+                    r.msg = m
+                    r.done.set()
+                    continue
                 if m.get("ev") == "state":
                     with self.lock:
                         self.state["servos"] = {str(s["id"]): s for s in m["servos"]}
@@ -138,7 +168,7 @@ def lan_ips():
     return sorted(ip for ip in out if not ip.startswith("127."))
 
 
-def make_handler(robot):
+def make_handler(robot, agent=None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *a):
             pass
@@ -155,6 +185,15 @@ def make_handler(robot):
             path = self.path.split("?")[0]
             if path == "/":
                 self._send(PAGE.read_bytes(), "text/html; charset=utf-8")
+            elif path == "/api/agent":
+                if not agent:
+                    return self._send(b'{"ok":false,"error":"no agent: start dash with --llm-url"}', "application/json", 400)
+                q = {k: urllib.parse.unquote_plus(v) for k, v in (p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)}
+                if "on" in q:
+                    agent.switch(q["on"] in ("1", "true", "on"))
+                if q.get("say"):
+                    agent.hear(q["say"])
+                self._send(json.dumps({"ok": True, **agent.view}).encode(), "application/json")
             elif path == "/api/body":
                 body = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p).get("set")
                 if body not in ("simple", "full"):
@@ -209,10 +248,17 @@ def make_handler(robot):
     return Handler
 
 
-def serve(host, ids, hz, fps, listen, port):
+def serve(host, ids, hz, fps, listen, port, llm=None):
+    """llm: None, or dict(url, model, api_key, on, record) to run the agent in this process."""
     robot = Robot(host, ids, hz, fps)
     robot.start()
-    httpd = ThreadingHTTPServer((listen, port), make_handler(robot))
+    agent = None
+    if llm:
+        from agent import Agent
+        agent = Agent(robot, llm["url"], llm["model"], llm.get("api_key"), llm.get("record", True), llm.get("motion", True))
+        agent.start()
+        agent.switch(llm.get("on", False))
+    httpd = ThreadingHTTPServer((listen, port), make_handler(robot, agent))
     httpd.daemon_threads = True
     urls = [f"http://{ip}:{port}/" for ip in (lan_ips() if listen == "0.0.0.0" else [listen])]
     print(json.dumps({"ok": True, "dashboard": urls, "robot": host}), flush=True)

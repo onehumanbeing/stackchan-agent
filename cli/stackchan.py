@@ -199,6 +199,16 @@ def main(argv=None):
     p.add_argument("--ids", help="default: every id on the bus")
     p.add_argument("--hz", type=int, default=10)
     p.add_argument("--fps", type=int, default=5)
+    p.add_argument("--llm-url", default=os.environ.get("STACKCHAN_LLM_URL"),
+                   help="OpenAI-compatible endpoint (e.g. http://localhost:8000/v1): enables the agent")
+    p.add_argument("--llm-model", default=os.environ.get("STACKCHAN_LLM_MODEL", "default"))
+    p.add_argument("--agent", action="store_true", help="start with the agent switched on")
+    p.add_argument("--no-record", action="store_true", help="do not write episodes to ~/.stackchan/episodes")
+    p.add_argument("--no-motion", action="store_true", help="agent thinks and changes faces but never moves a servo")
+    p = sub.add_parser("agent", help="control the agent of a running dash: on | off | say TEXT")
+    p.add_argument("action", choices=["on", "off", "say", "status"])
+    p.add_argument("text", nargs="*")
+    p.add_argument("--dash", default="http://127.0.0.1:8765")
     p = sub.add_parser("wifi", help="scan | list | status | set SSID | forget SSID")
     p.add_argument("action", choices=["scan", "list", "status", "set", "forget"])
     p.add_argument("ssid", nargs="?")
@@ -210,16 +220,23 @@ def main(argv=None):
     a = ap.parse_args(argv)
 
     out = lambda obj: print(json.dumps(obj, ensure_ascii=False), flush=True)   # noqa: E731
-    if a.cmd == "view":     # talks to a running `dash`, not to the robot
+    if a.cmd in ("view", "agent"):     # these talk to a running `dash`, not to the robot
+        import urllib.parse
         import urllib.request
+        if a.cmd == "view":
+            q = f"/api/body?set={a.body}"
+        else:
+            q = "/api/agent?" + {"on": "on=1", "off": "on=0", "status": ""}.get(a.action, "say=" + urllib.parse.quote_plus(" ".join(a.text)))
         try:
-            out(json.loads(urllib.request.urlopen(f"{a.dash}/api/body?set={a.body}", timeout=5).read()))
+            out(json.loads(urllib.request.urlopen(a.dash + q, timeout=5).read()))
         except OSError as e:
             out({"ok": False, "error": f"live page not reachable at {a.dash}: {e}"})
-        return
+        return 0
     if a.cmd == "dash":     # needs Wi-Fi: camera frames only go over WebSocket
         from dashboard import serve
-        serve(a.host or DEFAULT_HOST, parse_ids(a.ids) if a.ids else None, a.hz, a.fps, a.listen, a.http_port)
+        llm = a.llm_url and {"url": a.llm_url, "model": a.llm_model, "api_key": os.environ.get("STACKCHAN_LLM_KEY"),
+                             "on": a.agent, "record": not a.no_record, "motion": not a.no_motion}
+        serve(a.host or DEFAULT_HOST, parse_ids(a.ids) if a.ids else None, a.hz, a.fps, a.listen, a.http_port, llm)
         return 0
     try:
         link = Link(a.port, a.host, a.timeout)
