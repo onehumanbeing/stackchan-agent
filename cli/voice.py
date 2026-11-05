@@ -2,8 +2,8 @@
 
 Mic audio arrives as 16 kHz int16 chunks (robot.on_audio).  An energy VAD cuts it into utterances;
 whisper.cpp (whisper-server, started here, local) transcribes them.  While idle, an utterance that
-starts with the wake phrase ("Hey Buddy") wakes the robot: it shows "Listening…" (silently: speaking would
-close the mic), looks up and, when it has nothing else to do, lifts its head a little until the command is in.  The next utterance goes to the agent.
+starts with the wake phrase ("Hey Buddy") wakes the robot: it answers "Listening", looks up and, when it has
+nothing else to do, lifts its head a little and drops its arms to home (at attention) until the command is in.  The next utterance goes to the agent.
 Replies are spoken with a local TTS (Kokoro, else macOS `say`) and
 streamed to the robot's speaker; the mic is off while it speaks (the board is half duplex).
 """
@@ -123,6 +123,8 @@ class Voice(threading.Thread):
         super().__init__(daemon=True)
         self.robot, self.agent, self.wake = robot, agent, wake
         self.tts = make_tts(tts_voice)
+        self.cache = {}                          # wake replies, rendered once: TTS takes about a second
+        threading.Thread(target=lambda: [self._pcm(t) for t in HEARD.values()], daemon=True).start()
         self.stt = Whisper(whisper_model)
         self.mode = "idle"                       # idle (wake word) | listening (command) | busy
         self.buf, self.speech, self.silence, self.floor = bytearray(), False, 0.0, 200.0
@@ -166,12 +168,12 @@ class Voice(threading.Thread):
     # --- speaker side ---------------------------------------------------------------------------
     def say(self, text):
         self.robot.request("face.set", say=text, ms=4000)
-        pcm = self.tts(text)
+        pcm = self._pcm(text) if text in HEARD.values() else self.tts(text)
         prev, self.mode = self.mode, "busy"
         self.robot.send_audio(pcm)
         self.robot.request("face.set", mouth=0.7)          # the eyes bob while it talks
         talk = None
-        if self.agent.motion:                    # small talking hands / nods (talk_motion.py)
+        if self.agent.motion and text not in HEARD.values():   # small talking hands / nods (talk_motion.py)
             talk = Talk(self.robot, self.agent, pcm).start()
         time.sleep(len(pcm) / (2 * RATE) + 0.3)
         for _ in range(30):                      # until the robot's queue is empty
@@ -182,8 +184,8 @@ class Voice(threading.Thread):
             talk.stop()
         self.robot.request("face.set", mouth=0)
         self.mode = prev if prev != "busy" else "idle"
-        self.deaf_until = time.monotonic() + 0.4   # its own echo
-        self._mic(True)
+        self.deaf_until = time.monotonic() + (0.15 if text in HEARD.values() else 0.4)   # its own echo; short after
+        self._mic(True)                                                                  # "Listening": people answer fast
 
     # --- main loop ------------------------------------------------------------------------------
     def run(self):
@@ -242,10 +244,13 @@ class Voice(threading.Thread):
                 self.robot.request("head.move", id=2, deg=pitch + sign * LIFT_DEG, ms=250)
             if self.agent.motion:
                 self._arms_home(s)
-        # No spoken reply: the speaker would close the mic for about a second (half duplex) and a quick
-        # "Hey Buddy ... can you dance?" would lose its command.  The face shows it is listening instead.
-        self.robot.request("face.set", say=HEARD.get(self.agent.lang, HEARD["en"]) + "…", ms=WAKE_S * 1000)
+        self.say(HEARD.get(self.agent.lang, HEARD["en"]))
         self._listen(WAKE_S)
+
+    def _pcm(self, text):
+        if text not in self.cache:
+            self.cache[text] = self.tts(text)
+        return self.cache[text]
 
     def _listen(self, seconds):
         self._log(f"listening {seconds} s")
@@ -253,22 +258,23 @@ class Voice(threading.Thread):
         self.agent._pub(status="listening")
 
     def _arms_home(self, snapshot):
-        """Arms to the rest pose (agent.REST_DEG), quickly: it is ready to listen.
+        """Arms to home (hanging down, calibration zeros), quickly, like standing at attention: it is ready to listen.
         Where they were is kept: if no command comes, _give_up puts them back."""
-        servos = snapshot.get("servos", {})
+        joints, servos = snapshot.get("calibration", {}).get("joints", {}), snapshot.get("servos", {})
         if self.arms_before is None:
             self.arms_before = {sid: servos[sid]["deg"] for sid in ("1", "5") if "deg" in servos.get(sid, {})}
-        self.agent.rest_arms(speed=1600, acc=40)
+        for sid in ("1", "5"):
+            if sid in servos and sid in joints:
+                try:
+                    self.robot.request("servo.move", id=int(sid), deg=joints[sid]["zero"], speed=2400, acc=60)
+                except (RuntimeError, TimeoutError):
+                    pass
 
     def _give_up(self):
         """No command in time (after the wake word or after an answer): back to waiting for the wake word."""
         if self.mode == "listening" and time.monotonic() > self.listen_until and not self.speech:
             self._log("no command: back to waiting for the wake word")
             self.mode = "idle"
-            try:
-                self.robot.request("face.set", say="", ms=1)    # the "Listening…" caption off
-            except (RuntimeError, TimeoutError):
-                pass
             self._unlift()
             self._arms_back()
             self.agent._pub(status="idle")

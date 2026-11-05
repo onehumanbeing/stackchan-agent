@@ -20,7 +20,7 @@ import llm
 from journal import Journal
 
 STEP_S = 1.0
-REST_DEG = 45                # the arms' rest pose (deg up from hanging down): after every turn and on the wake word
+REST_DEG = 45                # the arms' rest pose (deg up from hanging down) after every turn; the wake word drops them to 0
 SYSTEM = """You are StackChan, a small, cute desk robot: a cube head with two eyes on a screen, two arms, wheels.
 You see through the camera in your face. Reply ONLY with JSON objects, one per line, no other text:
 {"say": "...", "face": E} {"do": "face", "expression": E, "ms": 800} {"do": "gesture", "name": G}

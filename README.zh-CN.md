@@ -206,8 +206,8 @@ surprised、scared、dizzy、sleepy、sigh、bored、listening、thinking、dayd
 
 用 `--whisper-model`（whisper.cpp ggml 模型）开启。全部在本地运行，使用机器人自己的麦克风和喇叭。
 
-- 说 **"Hey Buddy"** 唤醒：屏幕显示 "Listening…"，眼睛看上来、轻轻抬头，手臂回到休息位（往前 45°）。它不出声应答，
-  麦克风一直开着，所以连着说 "Hey Buddy … can you dance?" 也能完整听到。每次回答完手臂都会回到休息位。
+- 说 **"Hey Buddy"** 唤醒：它回答 "Listening"，眼睛看上来、轻轻抬头，手臂快速放下归位（像立正），然后听指令。
+  每次回答完手臂回到休息位（往前 45°）。
 - 回答后会继续听约 8 秒，追问不需要再说唤醒词。
 - `--lang zh|en` 选择说话和识别的语言；运行中用 `./stackchan agent lang zh|en` 切换。
 - 语音识别：whisper.cpp（`whisper-server`，由 CLI 启动）。语音合成：Kokoro（`--tts-voice`，默认按语言为
