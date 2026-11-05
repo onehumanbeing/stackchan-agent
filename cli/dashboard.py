@@ -57,13 +57,17 @@ class Robot(threading.Thread):
                 pending[i] = cmd
                 ws.send(json.dumps({"id": i, "cmd": cmd, "args": args}))
 
-            ids = self.ids
-            ask("bus.scan", **{"from": 0, "to": 20}) if not ids else ask("stream.start", ids=ids, hz=self.hz)
+            ids = self.ids or []
+            if ids:
+                ask("stream.start", ids=ids, hz=self.hz)
             ask("camera.start", fps=self.fps)
             self._set(connected=True, error="", via=f"ws://{ip}:81")
-            next_info = 0.0
+            next_info = next_scan = 0.0
             while True:
                 now = time.time()
+                if not self.ids and now >= next_scan:   # servos come and go while the robot is assembled
+                    ask("bus.scan", **{"from": 0, "to": 20})
+                    next_scan = now + 5.0
                 if now >= next_info:
                     ask("sys.info")
                     ask("face.snap")
@@ -88,10 +92,10 @@ class Robot(threading.Thread):
                     with self.lock:
                         self.state["faults"] = (self.state["faults"] + [{**m, "at": time.strftime("%H:%M:%S")}])[-20:]
                 elif cmd == "bus.scan" and m.get("ok"):
-                    ids = m["result"]["ids"]
-                    if ids:
-                        ask("stream.start", ids=ids, hz=self.hz)
-                    self._set(ids=ids)
+                    if m["result"]["ids"] != ids:
+                        ids = m["result"]["ids"]
+                        ask("stream.start", ids=ids, hz=self.hz) if ids else ask("stream.stop")
+                        self._set(ids=ids)
                 elif cmd == "sys.info" and m.get("ok"):
                     self._set(info=m["result"])
                 elif cmd == "face.snap" and m.get("ok"):
