@@ -25,7 +25,8 @@ Several clients can be connected at once (USB + up to 4 WebSocket clients). Each
 | `ping` | – | `pong` (ms since boot) |
 | `hello`, `sys.info` | – | `fw`, `mac`, `uptime_s`, `heap`, `wifi{connected,ssid,ip,rssi}`, `bus{ok,port,rx,tx,baud,errors}`, `face` |
 | `sys.reboot` | – | restarts (no reply) |
-| `bus.detect` | – | searches Grove ports C, A, B (both TX/RX orders, 1 Mbps), saves the result |
+| `bus.detect` | – | searches Grove ports C, A, B, then the body's internal head-servo bus (GPIO6/7) (both TX/RX orders, 1 Mbps), saves the result |
+| `bus.probe` | – | `probes: [{port, rx, tx, baud, bytes}]`: raw bytes heard after a broadcast ping on every pin pair at 1M / 500k / 115200. Garbled bytes usually mean several servos share an id. |
 | `bus.scan` | `from`, `to` (0..253) | `ids`, `checksum_errors` (> 0 usually means two servos share an id) |
 | `servo.read` | `id` | `pos`, `deg`, `speed`, `load`, `volt`, `temp`, `moving`, `status` (if nonzero), `limits_deg` |
 | `servo.move` | `id`, `deg` or `raw`, `speed` (600), `acc` (20) | `raw`, `deg`, `clamped` |

@@ -19,6 +19,18 @@ bool Bus::begin(int rx, int tx, uint32_t baud, int probe_max) {
   return ok_ = false;
 }
 
+int Bus::probe(int rx, int tx, uint32_t baud, uint8_t *out, int max) {
+  end();
+  port_.begin(baud, SERIAL_8N1, rx, tx);
+  delay(5);
+  send(BROADCAST, PING, nullptr, 0);
+  int n = 0;
+  uint32_t t0 = millis();
+  while (n < max && millis() - t0 < 20) if (port_.available()) out[n++] = port_.read();
+  end();
+  return n;
+}
+
 void Bus::end() {
   if (baud_) port_.end();
   ok_ = false;

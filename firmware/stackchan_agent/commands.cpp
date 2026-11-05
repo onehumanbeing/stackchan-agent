@@ -18,6 +18,7 @@ sts::Bus bus;
 struct Pins { int rx, tx; const char *port; };
 constexpr Pins CANDIDATES[] = {   // CoreS3 Grove ports, both TX/RX orders
   {18, 17, "C"}, {17, 18, "C"}, {1, 2, "A"}, {2, 1, "A"}, {8, 9, "B"}, {9, 8, "B"},
+  {7, 6, "body"}, {6, 7, "body"},   // M5Stack StackChan body: internal head-servo bus
 };
 const char *bus_port = "";
 
@@ -102,6 +103,22 @@ const char *run(int ch, const String &cmd, JsonVariantConst a, JsonObject r) {
   if (cmd == "sys.reboot") { Serial.flush(); delay(50); ESP.restart(); }
 
   if (cmd == "bus.detect") { settings::setBus({}); r["found"] = detectBus(); sysInfo(r); return nullptr; }
+  if (cmd == "bus.probe") {     // raw bytes per pin pair / baud: tells wiring, echo and baud problems apart
+    static const uint32_t BAUDS[] = {1000000, 500000, 115200};
+    JsonArray out = r["probes"].to<JsonArray>();
+    uint8_t buf[48];
+    for (const auto &p : CANDIDATES) for (uint32_t b : BAUDS) {
+      int n = bus.probe(p.rx, p.tx, b, buf, sizeof(buf));
+      if (!n) continue;
+      JsonObject o = out.add<JsonObject>();
+      o["port"] = p.port, o["rx"] = p.rx, o["tx"] = p.tx, o["baud"] = b;
+      char hex[3 * sizeof(buf) + 1] = "";
+      for (int i = 0; i < n; i++) sprintf(hex + 3 * i, "%02X ", buf[i]);
+      o["bytes"] = hex;
+    }
+    detectBus();
+    return nullptr;
+  }
   if (cmd == "bus.scan") {
     if (!bus.ok() && !detectBus()) return "bus not found (check the adapter wiring and its UART switch)";
     uint32_t e0 = bus.errors();

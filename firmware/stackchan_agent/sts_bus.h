@@ -48,6 +48,8 @@ class Bus {
   void syncMove(const uint8_t *ids, const int *pos, int n, int speed, int acc);
   bool torque(uint8_t id, bool on) { return write8(id, TORQUE_ENABLE, on ? 1 : 0); }
   bool setId(uint8_t id, uint8_t new_id);
+  // Diagnostic: broadcast ping on rx/tx at baud, return the raw bytes heard within 20 ms (echo included).
+  int probe(int rx, int tx, uint32_t baud, uint8_t *out, int max);
 
  private:
   void send(uint8_t id, uint8_t instr, const uint8_t *params, uint8_t n);

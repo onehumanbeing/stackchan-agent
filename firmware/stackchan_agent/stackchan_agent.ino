@@ -28,6 +28,7 @@ void pollUsb() {
 void setup() {
   auto cfg = M5.config();
   M5.begin(cfg);
+  M5.Power.setExtOutput(true);   // 5 V on the Grove ports (the bus adapter may take its logic power from there)
   Serial.begin(115200);
   face::begin();
   bool cam = camera::begin();
