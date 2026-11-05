@@ -1,11 +1,42 @@
 {
-  "_doc": "Servo id -> 3D model joint. model_deg = home + sign * (servo_deg - zero). Set zero with `stackchan calibrate` while the arms are in the home pose (both arms straight forward).",
+  "_doc": "Servo id -> 3D joint: angle = sign * (servo_deg - zero), 0 = home pose (arms straight forward). `stackchan calibrate` sets the zeros. head: same for the head servos. body: 3D variant, simple | full (`stackchan view`).",
   "joints": {
-    "1": {"joint": "ls", "zero": 162.0, "sign": 1},
-    "2": {"joint": "le", "zero": 0.0, "sign": 1},
-    "3": {"joint": "lw", "zero": 0.0, "sign": 1},
-    "4": {"joint": "lj", "zero": 0.0, "sign": 1},
-    "5": {"joint": "rs", "zero": 167.5, "sign": 1},
-    "6": {"joint": "rj", "zero": 0.0, "sign": 1}
-  }
+    "1": {
+      "joint": "ls",
+      "zero": 162.0,
+      "sign": 1
+    },
+    "2": {
+      "joint": "le",
+      "zero": 0.0,
+      "sign": 1
+    },
+    "3": {
+      "joint": "lw",
+      "zero": 0.0,
+      "sign": 1
+    },
+    "4": {
+      "joint": "lj",
+      "zero": 0.0,
+      "sign": 1
+    },
+    "5": {
+      "joint": "rs",
+      "zero": 167.5,
+      "sign": 1
+    },
+    "6": {
+      "joint": "rj",
+      "zero": 0.0,
+      "sign": 1
+    }
+  },
+  "head": {
+    "yaw_zero": -16.1,
+    "yaw_sign": 1,
+    "pitch_zero": 23.4,
+    "pitch_sign": 1
+  },
+  "body": "simple"
 }

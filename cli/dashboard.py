@@ -15,8 +15,9 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 PAGE = HERE / "dashboard.html"
-STATIC = {"/dashboard3d.js": ("dashboard3d.js", "text/javascript"), "/model.json": ("model/r7.json", "application/json"),
-          "/calibration.json": ("calibration.json", "application/json")}
+STATIC = {"/twin/scene.js": ("twin/scene.js", "text/javascript"), "/twin/model.js": ("twin/model.js", "text/javascript"),
+          "/model.json": ("model/r7.json", "application/json")}
+CALIBRATION = HERE / "calibration.json"
 
 
 class Robot(threading.Thread):
@@ -26,13 +27,22 @@ class Robot(threading.Thread):
         super().__init__(daemon=True)
         self.host, self.ids, self.hz, self.fps = host, ids, hz, fps
         self.lock, self.changed = threading.Lock(), threading.Condition()
-        self.state = {"connected": False, "info": {}, "servos": {}, "faults": [], "camera_fps": 0.0}
+        cal = json.loads(CALIBRATION.read_text())
+        self.state = {"connected": False, "info": {}, "servos": {}, "faults": [], "camera_fps": 0.0, "head": {},
+                      "calibration": cal, "body": cal.get("body", "simple")}
         self.jpeg = self.face = None
         self.frames = []
 
     def snapshot(self):
         with self.lock:
             return json.loads(json.dumps(self.state))
+
+    def set_body(self, body):
+        """3D body variant ("simple" | "full"), remembered in calibration.json."""
+        cal = json.loads(CALIBRATION.read_text())
+        cal["body"] = body
+        CALIBRATION.write_text(json.dumps(cal, indent=2) + "\n")
+        self._set(body=body, calibration=cal)
 
     def _set(self, **kv):
         with self.lock:
@@ -65,7 +75,7 @@ class Robot(threading.Thread):
                 ask("stream.start", ids=ids, hz=self.hz)
             ask("camera.start", fps=self.fps)
             self._set(connected=True, error="", via=f"ws://{ip}:81")
-            next_info = next_scan = 0.0
+            next_info = next_scan = next_head = 0.0
             while True:
                 now = time.time()
                 if not self.ids and now >= next_scan:   # servos come and go while the robot is assembled
@@ -75,6 +85,9 @@ class Robot(threading.Thread):
                     ask("sys.info")
                     ask("face.snap")
                     next_info = now + 1.0
+                if now >= next_head:
+                    ask("head.read")
+                    next_head = now + 0.2
                 try:
                     msg = ws.recv(timeout=0.2)
                 except TimeoutError:
@@ -99,6 +112,8 @@ class Robot(threading.Thread):
                         ids = m["result"]["ids"]
                         ask("stream.start", ids=ids, hz=self.hz) if ids else ask("stream.stop")
                         self._set(ids=ids)
+                elif cmd == "head.read" and m.get("ok"):
+                    self._set(head={("yaw" if h["id"] == 1 else "pitch"): h["deg"] for h in m["result"]["servos"]})
                 elif cmd == "sys.info" and m.get("ok"):
                     self._set(info=m["result"])
                 elif cmd == "face.snap" and m.get("ok"):
@@ -140,6 +155,12 @@ def make_handler(robot):
             path = self.path.split("?")[0]
             if path == "/":
                 self._send(PAGE.read_bytes(), "text/html; charset=utf-8")
+            elif path == "/api/body":
+                body = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p).get("set")
+                if body not in ("simple", "full"):
+                    return self._send(b'{"ok":false,"error":"set=simple|full"}', "application/json", 400)
+                robot.set_body(body)
+                self._send(json.dumps({"ok": True, "body": body}).encode(), "application/json")
             elif path in STATIC:
                 self._send((HERE / STATIC[path][0]).read_bytes(), STATIC[path][1])
             elif path == "/state.json":

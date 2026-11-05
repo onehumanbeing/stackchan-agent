@@ -179,6 +179,9 @@ def main(argv=None):
     p.add_argument("--gesture", default="wave")
     p.add_argument("--threshold", type=float, help="mean gray difference 0..255 (default: from the camera noise)")
     p.add_argument("--times", type=int, default=0, help="stop after N reactions (0 = run until Ctrl-C)")
+    p = sub.add_parser("view", help="3D body on the live page: simple (two shoulder servos) | full (r7 arms)")
+    p.add_argument("body", choices=["simple", "full"])
+    p.add_argument("--dash", default="http://127.0.0.1:8765", help="live page address")
     sub.add_parser("calibrate", help="arms in the home pose (straight forward): save their angles as the 3D model's zero")
     p = sub.add_parser("selftest", help="move each servo a little and check it got there")
     p.add_argument("--ids", help="default: every id on the bus")
@@ -207,6 +210,13 @@ def main(argv=None):
     a = ap.parse_args(argv)
 
     out = lambda obj: print(json.dumps(obj, ensure_ascii=False), flush=True)   # noqa: E731
+    if a.cmd == "view":     # talks to a running `dash`, not to the robot
+        import urllib.request
+        try:
+            out(json.loads(urllib.request.urlopen(f"{a.dash}/api/body?set={a.body}", timeout=5).read()))
+        except OSError as e:
+            out({"ok": False, "error": f"live page not reachable at {a.dash}: {e}"})
+        return
     if a.cmd == "dash":     # needs Wi-Fi: camera frames only go over WebSocket
         from dashboard import serve
         serve(a.host or DEFAULT_HOST, parse_ids(a.ids) if a.ids else None, a.hz, a.fps, a.listen, a.http_port)
@@ -269,6 +279,8 @@ def main(argv=None):
                     j["zero"] = done[sid] = link.request("servo.read", id=int(sid))["deg"]
                 except (RuntimeError, TimeoutError):
                     pass                      # not connected yet: keep the old zero
+            for h in link.request("head.read")["servos"]:
+                cal["head"]["yaw_zero" if h["id"] == 1 else "pitch_zero"] = done["head_" + str(h["id"])] = h["deg"]
             json.dump(cal, open(path, "w"), indent=2)
             out({"file": path, "zero": done})
         elif a.cmd == "selftest":

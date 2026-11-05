@@ -78,7 +78,7 @@
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
 function render(s) {
-  if (window.twinUpdate) window.twinUpdate(s.servos);
+  if (window.twinUpdate) window.twinUpdate(s);
   $("link").textContent = s.connected ? "online" : ("offline" + (s.error ? " · " + s.error : ""));
   $("link").className = "pill " + (s.connected ? "ok" : "bad");
   $("cam").textContent = "camera " + (s.camera_fps ? s.camera_fps + " fps" : "–");
@@ -106,9 +106,8 @@ es.onerror = () => { $("link").textContent = "dashboard offline"; $("link").clas
 setInterval(() => { $("faceimg").src = "/face.jpg?" + Date.now(); }, 1000);
 $("camimg").onerror = () => setTimeout(() => { $("camimg").src = "/camera.mjpg?" + Date.now(); }, 2000);
 </script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
-<script src="/dashboard3d.js"></script>
+<script type="importmap">{"imports": {"three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script type="module" src="/twin/scene.js"></script>
 </body>
 </html>
