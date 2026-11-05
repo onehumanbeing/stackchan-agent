@@ -14,10 +14,10 @@ import threading
 import time
 
 RATE = 16000
-ARM_DEG = 10                 # arm flick, deg around where the arm is
-NOD_DEG, TILT_DEG = 4, 5     # head nod (pitch) and tilt (yaw), deg
-GAP_S = 0.5                  # at most one move per half second
-ARM_SPEED, ARM_ACC = 500, 20  # STS steps/s and ramp: slow and soft
+ARM_DEG = 20                 # arm flick, deg around where the arm is
+NOD_DEG, TILT_DEG = 8, 10    # head nod (pitch) and tilt (yaw), deg
+GAP_S = 0.9                  # at most one move every 0.9 s: calm, not fidgety
+ARM_SPEED, ARM_ACC = 450, 12  # STS steps/s and ramp: slow and soft (20 deg in about 0.5 s)
 ARMS = {"left": 1, "right": 5}
 
 
@@ -62,7 +62,7 @@ class Talk:
     def _run(self):
         moves = ["left", "nod", "right", "tilt"]
         for k, t in enumerate(self.times):
-            if self.end.wait(max(0.0, self.t0 + t - 0.12 - time.monotonic())):
+            if self.end.wait(max(0.0, self.t0 + t - 0.2 - time.monotonic())):
                 return
             if not self._free():
                 continue
@@ -84,7 +84,7 @@ class Talk:
             up, raised = j.get("up", 1), (base - j["zero"]) * j.get("up", 1)
             d = ARM_DEG if raised + ARM_DEG <= 100 else -ARM_DEG      # up a little, or down if it is already high
             r.request("servo.move", id=sid, deg=base + up * d, speed=ARM_SPEED, acc=ARM_ACC)
-            self.end.wait(0.3)
+            self.end.wait(0.5)
             r.request("servo.move", id=sid, deg=base, speed=ARM_SPEED, acc=ARM_ACC)
         else:
             key, hid = ("pitch", 2) if move == "nod" else ("yaw", 1)
@@ -92,6 +92,6 @@ class Talk:
             if base is None:
                 return
             off = -NOD_DEG if move == "nod" else self.rng.choice((-1, 1)) * TILT_DEG
-            r.request("head.move", id=hid, deg=base + h.get(f"{key}_sign", 1) * off, ms=180)
-            self.end.wait(0.25)
-            r.request("head.move", id=hid, deg=base, ms=250)
+            r.request("head.move", id=hid, deg=base + h.get(f"{key}_sign", 1) * off, ms=350)
+            self.end.wait(0.45)
+            r.request("head.move", id=hid, deg=base, ms=450)

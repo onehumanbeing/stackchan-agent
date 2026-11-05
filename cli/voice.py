@@ -184,8 +184,8 @@ class Voice(threading.Thread):
             talk.stop()
         self.robot.request("face.set", mouth=0)
         self.mode = prev if prev != "busy" else "idle"
-        self.deaf_until = time.monotonic() + 0.4
-        self._mic(True)
+        self.deaf_until = time.monotonic() + (0.15 if text in HEARD.values() else 0.4)   # its own echo; short after
+        self._mic(True)                                                                  # "Listening": people answer fast
 
     def _pcm(self, text):
         if text not in self.cache:
@@ -206,7 +206,7 @@ class Voice(threading.Thread):
                 continue
             t0 = time.monotonic()
             text = self.stt.transcribe(pcm, self.agent.lang)
-            print(json.dumps({"voice": self.mode, "heard": text, "audio_s": round(len(pcm) / (2 * RATE), 2),
+            print(json.dumps({"at": time.strftime("%H:%M:%S"), "voice": self.mode, "heard": text, "audio_s": round(len(pcm) / (2 * RATE), 2),
                               "stt_s": round(time.monotonic() - t0, 2)}, ensure_ascii=False), file=sys.stderr, flush=True)
             if not text or text.startswith("["):  # [BLANK_AUDIO], [Music] ...
                 continue
@@ -253,6 +253,7 @@ class Voice(threading.Thread):
         self._listen(WAKE_S)
 
     def _listen(self, seconds):
+        self._log(f"listening {seconds} s")
         self.mode, self.listen_until = "listening", time.monotonic() + seconds
         self.agent._pub(status="listening")
 
@@ -272,6 +273,7 @@ class Voice(threading.Thread):
     def _give_up(self):
         """No command in time (after the wake word or after an answer): back to waiting for the wake word."""
         if self.mode == "listening" and time.monotonic() > self.listen_until and not self.speech:
+            self._log("no command: back to waiting for the wake word")
             self.mode = "idle"
             self._unlift()
             self._arms_back()
@@ -289,6 +291,9 @@ class Voice(threading.Thread):
                 self.robot.request("servo.move", id=int(sid), deg=deg, speed=1200, acc=40)
             except (RuntimeError, TimeoutError):
                 pass
+
+    def _log(self, what):
+        print(json.dumps({"at": time.strftime("%H:%M:%S"), "voice": what}), file=sys.stderr, flush=True)
 
     def _dance(self, text):
         from dashboard import DANCING, dance_api
