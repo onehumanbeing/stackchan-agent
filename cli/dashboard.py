@@ -266,15 +266,17 @@ def make_handler(robot, agent=None):
     return Handler
 
 
-def serve(host, ids, hz, fps, listen, port, llm=None):
-    """llm: None, or dict(url, model, api_key, on, record) to run the agent in this process."""
+def serve(host, ids, hz, fps, listen, port, llm=None, qr=None):
+    """llm: None, or dict(url, model, api_key, on, record) to run the agent in this process.
+    qr: a link shown as a QR code in the page corner (e.g. where to follow the project)."""
     robot = Robot(host, ids, hz, fps)
+    robot.state["qr"] = qr
     robot.start()
     agent = None
     if llm:
         from agent import Agent
         agent = Agent(robot, llm["url"], llm["model"], llm.get("api_key"), llm.get("record", True), llm.get("motion", True),
-                      llm.get("lang", "en"))
+                      llm.get("lang", "en"), llm.get("think", "low"))
         agent.start()
         agent.switch(llm.get("on", False))
         if llm.get("whisper_model"):

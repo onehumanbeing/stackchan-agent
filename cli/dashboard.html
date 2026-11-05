@@ -43,6 +43,11 @@
   #twin { height:46vh; min-height:280px; border-radius:10px; overflow:hidden; background:#0e0e0e; }
   .stack { grid-row:1 / span 2; grid-column:2; }
   @media (max-width: 860px) { .stack, .twin-panel { grid-column:auto; grid-row:auto; } }
+  #qr { position:fixed; right:16px; bottom:16px; display:none; align-items:center; gap:10px; padding:8px 12px 8px 8px;
+        background:var(--panel); border:1px solid var(--line); border-radius:14px; z-index:5; }
+  #qr .code { background:#fff; padding:6px; border-radius:8px; line-height:0; }
+  #qr .code svg { width:96px; height:96px; }
+  #qr .who { font-size:13px; } #qr .who span { display:block; color:var(--muted); font-size:11px; }
 </style>
 </head>
 <body>
@@ -90,6 +95,8 @@
     </section>
   </div>
 </main>
+<div id="qr"><div class="code"></div><div class="who"></div></div>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
@@ -132,7 +139,16 @@ function renderAgent(g) {
   t.innerHTML = g.thinking ? prettyThinking(g.thinking) : "–"; if (stick) t.scrollTop = t.scrollHeight;
   $("steps").innerHTML = (g.steps || []).map(step).join("");
 }
+function renderQr(url) {           // once: the link given with `dash --qr`
+  if (!url || renderQr.done || !window.qrcode) return;
+  const q = qrcode(0, "M"); q.addData(url); q.make();
+  const box = $("qr"), m = url.match(/(?:x|twitter)\.com\/([^/?#]+)/);
+  box.querySelector(".code").innerHTML = q.createSvgTag({cellSize: 4, margin: 0, scalable: true});
+  box.querySelector(".who").innerHTML = m ? `<span>Follow on X</span>@${esc(m[1])}` : `<span>Scan</span>${esc(url.replace(/^https?:\/\//, ""))}`;
+  box.style.display = "flex"; renderQr.done = true;
+}
 function render(s) {
+  renderQr(s.qr);
   renderAgent(s.agent);
   if (window.twinUpdate) window.twinUpdate(s);
   $("link").textContent = s.connected ? "online" : ("offline" + (s.error ? " · " + s.error : ""));

@@ -198,6 +198,7 @@ def main(argv=None):
     p = sub.add_parser("dash", help="live web page (camera, face, servos) for any browser on the LAN")
     p.add_argument("--listen", default="0.0.0.0")
     p.add_argument("--http-port", type=int, default=8765)
+    p.add_argument("--qr", default=os.environ.get("STACKCHAN_QR"), help="show this link as a QR code in the page corner")
     p.add_argument("--ids", help="default: every id on the bus")
     p.add_argument("--hz", type=int, default=10)
     p.add_argument("--fps", type=int, default=5)
@@ -211,6 +212,8 @@ def main(argv=None):
                    help="whisper.cpp ggml model: enables voice (wake word 'Hey Grok', robot mic + speaker)")
     p.add_argument("--tts-voice", default=os.environ.get("STACKCHAN_TTS_VOICE"),
                    help="Kokoro voice (default af_heart / zf_xiaoxiao by language) or a macOS `say` voice")
+    p.add_argument("--llm-think", choices=["low", "high", "off"], default="low",
+                   help="how much the model reasons before acting: low (fast, default), high, off (fastest)")
     p.add_argument("--lang", choices=["zh", "en"], default=os.environ.get("STACKCHAN_LANG", "en"),
                    help="language the agent speaks; switch at runtime with `stackchan agent lang zh|en`")
     p = sub.add_parser("agent", help="control the agent of a running dash: on | off | say TEXT | lang zh|en")
@@ -245,8 +248,8 @@ def main(argv=None):
         from dashboard import serve
         llm = a.llm_url and {"url": a.llm_url, "model": a.llm_model, "api_key": os.environ.get("STACKCHAN_LLM_KEY"),
                              "on": a.agent, "record": not a.no_record, "motion": not a.no_motion,
-                             "whisper_model": a.whisper_model, "tts_voice": a.tts_voice, "lang": a.lang}
-        serve(a.host or DEFAULT_HOST, parse_ids(a.ids) if a.ids else None, a.hz, a.fps, a.listen, a.http_port, llm)
+                             "whisper_model": a.whisper_model, "tts_voice": a.tts_voice, "lang": a.lang, "think": a.llm_think}
+        serve(a.host or DEFAULT_HOST, parse_ids(a.ids) if a.ids else None, a.hz, a.fps, a.listen, a.http_port, llm, a.qr)
         return 0
     try:
         link = Link(a.port, a.host, a.timeout)

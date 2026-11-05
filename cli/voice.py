@@ -14,6 +14,7 @@ import math
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -22,15 +23,25 @@ import wave
 from pathlib import Path
 
 RATE, CHUNK_S = 16000, 0.04
-WAKE = re.compile(r"(?:(?:hey|hi|hay|hei|ok|okay|嘿|黑|嗨|哈)[\s,.!，。！、]*)?(grok|grock|groq|grog|grokk|crok|格罗克|格洛克|葛洛克|格鲁克)", re.I)
-WAKE_PROMPT = "Hey Grok. 嘿 Grok。"
+WAKE = re.compile(r"(?:(?:hey|hi|hay|hei|a|ay|eh|ok|okay|嘿|黑|嗨|哈)[\s,.!，。！、]*)?(?<![a-z])(grok|grock|groq|grog|grokk|groc|grob|grov|crok|格罗克|格洛克|葛洛克|格鲁克)"
+                  r"|(?:hey|hi|嘿|黑)[\s,.!，。！、]*(rock|brock|crock|croc|grow|grove|格罗|葛)", re.I)
+PREROLL_S = 0.4              # audio kept from before the level rises, so soft starts ("Hey") are not cut
+# No whisper --prompt: with "Hey Grok" as a prompt it hears "Grok." in silence and servo noise.
 HEARD = {"zh": "我在听", "en": "Listening"}
 LIFT_DEG = 8
+WAKE_S, FOLLOW_S = 10, 8     # how long it waits for a command after the wake word / after answering
+
+
+# What whisper tends to "hear" in silence or noise; never a command.
+NOISE = {"thank you", "thanks", "thank you very much", "thanks for watching", "thank you for watching", "you", "bye",
+         "bye bye", "okay", "ok", "so", "um", "uh", "hmm", "amen", "谢谢", "谢谢观看", "字幕"}
 
 
 def wordy(text):
     """At least two words (or two CJK characters): shorter bits are usually noise or our own echo."""
     text = text.strip(" ,.!?，。！？")
+    if text.lower() in NOISE:
+        return False
     return len(text) >= 2 if not text.isascii() else len(text.split()) >= 2
 NO_PROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
@@ -43,8 +54,7 @@ class Whisper:
         if not exe or not Path(model).exists():
             raise RuntimeError("voice needs whisper.cpp (brew install whisper-cpp) and a ggml model (--whisper-model)")
         self.url = f"http://127.0.0.1:{port}/inference"
-        self.proc = subprocess.Popen([exe, "-m", str(model), "--port", str(port), "-l", language, "-nt",
-                                      "--prompt", WAKE_PROMPT], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.proc = subprocess.Popen([exe, "-m", str(model), "--port", str(port), "-l", language, "-nt"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(120):                    # model load
             try:
                 NO_PROXY.open(f"http://127.0.0.1:{port}/", timeout=1)
@@ -115,7 +125,7 @@ class Voice(threading.Thread):
         self.stt = Whisper(whisper_model)
         self.mode = "idle"                       # idle (wake word) | listening (command) | busy
         self.buf, self.speech, self.silence, self.floor = bytearray(), False, 0.0, 200.0
-        self.utterances, self.lifted, self.deaf_until = [], None, 0.0     # pitch to go back to after a wake-up lift
+        self.utterances, self.lifted, self.deaf_until, self.pre = [], None, 0.0, b""     # pitch to go back to after a wake-up lift
         self.lock = threading.Condition()
         robot.on_audio = self.feed
         agent.speak = self.say
@@ -124,13 +134,14 @@ class Voice(threading.Thread):
     def feed(self, pcm):
         if self.mode == "busy" or time.monotonic() < self.deaf_until:   # speaking, or its echo
             return
+        self.pre = (self.pre + pcm)[-int(PREROLL_S * RATE) * 2:]
         a = array.array("h", pcm)
         level = math.sqrt(sum(x * x for x in a) / max(1, len(a)))
         loud = level > max(self.floor * 3.0, 400)
         if not self.speech:
             self.floor = 0.95 * self.floor + 0.05 * level
             if loud:
-                self.speech, self.silence, self.buf = True, 0.0, bytearray(pcm)
+                self.speech, self.silence, self.buf = True, 0.0, bytearray(self.pre)
             return
         self.buf += pcm
         self.silence = 0.0 if loud else self.silence + CHUNK_S
@@ -138,7 +149,7 @@ class Voice(threading.Thread):
         end = 0.5 if self.mode == "idle" else 0.8     # the wake phrase is short: answer it sooner
         if self.silence >= end or seconds > 12:
             self.speech = False
-            if seconds - self.silence >= 0.3:
+            if seconds - PREROLL_S - self.silence >= 0.3:   # at least 0.3 s of actual sound
                 with self.lock:
                     self.utterances.append(bytes(self.buf))
                     self.lock.notify()
@@ -183,7 +194,10 @@ class Voice(threading.Thread):
                 pcm = self.utterances.pop(0)
             if not self.agent.on:
                 continue
+            t0 = time.monotonic()
             text = self.stt.transcribe(pcm, self.agent.lang)
+            print(json.dumps({"voice": self.mode, "heard": text, "audio_s": round(len(pcm) / (2 * RATE), 2),
+                              "stt_s": round(time.monotonic() - t0, 2)}, ensure_ascii=False), file=sys.stderr, flush=True)
             if not text or text.startswith("["):  # [BLANK_AUDIO], [Music] ...
                 continue
             if self.mode == "idle":
@@ -196,14 +210,17 @@ class Voice(threading.Thread):
                 if not wordy(rest):
                     continue
                 text = rest
+            elif self.wake.match(text.strip()) and not wordy(text[self.wake.match(text.strip()).end():]):
+                self._wake()                         # just the wake word again: answer again, wait for the command
+                continue
             elif not wordy(text):
                 continue
             self._unlift()
             self.mode = "busy"
             self.agent.hear(text)
             self.agent.idle.wait(60)
-            self.mode = "idle"
             self._mic(True)
+            self._listen(FOLLOW_S)                   # a conversation: the next sentence needs no wake word
 
     def _wake(self):
         self.mode = "listening"
@@ -217,11 +234,15 @@ class Voice(threading.Thread):
                 self.lifted = pitch
                 self.robot.request("head.move", id=2, deg=pitch + sign * LIFT_DEG, ms=250)
         self.say(HEARD.get(self.agent.lang, HEARD["en"]))
-        self.mode, self.woke = "listening", time.monotonic()
+        self._listen(WAKE_S)
+
+    def _listen(self, seconds):
+        self.mode, self.listen_until = "listening", time.monotonic() + seconds
+        self.agent._pub(status="listening")
 
     def _give_up(self):
-        """No command within 10 s of the wake word: back to waiting for it."""
-        if self.mode == "listening" and time.monotonic() - self.woke > 10 and not self.speech:
+        """No command in time (after the wake word or after an answer): back to waiting for the wake word."""
+        if self.mode == "listening" and time.monotonic() > self.listen_until and not self.speech:
             self.mode = "idle"
             self._unlift()
             self.agent._pub(status="idle")

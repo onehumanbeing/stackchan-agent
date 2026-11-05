@@ -9,8 +9,13 @@ import urllib.request
 NO_PROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))   # LAN / localhost endpoints
 
 
-def stream(url, model, messages, on_think=None, on_line=None, max_tokens=600, timeout=60, api_key=None):
+def stream(url, model, messages, on_think=None, on_line=None, max_tokens=600, timeout=60, api_key=None, think="low"):
+    """think: "low" (default: short reasoning, a few times faster), "high" (the server's default), "off"."""
     body = {"model": model, "messages": messages, "stream": True, "max_tokens": max_tokens, "temperature": 0.4}
+    if think == "off":
+        body["chat_template_kwargs"] = {"enable_thinking": False}
+    elif think == "low":
+        body["reasoning_effort"] = "low"
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
