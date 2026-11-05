@@ -55,7 +55,7 @@
   <section class="panel">
     <h2><span>Camera</span><span>Face</span></h2>
     <div class="media">
-      <img id="camimg" src="/camera.mjpg" alt="camera">
+      <img id="camimg" alt="camera">
       <img id="faceimg" alt="face">
     </div>
   </section>
@@ -133,7 +133,13 @@ const es = new EventSource("/events");
 es.onmessage = e => render(JSON.parse(e.data));
 es.onerror = () => { $("link").textContent = "dashboard offline"; $("link").className = "pill bad"; };
 setInterval(() => { $("faceimg").src = "/face.jpg?" + Date.now(); }, 1000);
-$("camimg").onerror = () => setTimeout(() => { $("camimg").src = "/camera.mjpg?" + Date.now(); }, 2000);
+// Camera: fetch the newest frame, show it, repeat.  Unlike an MJPEG stream this recovers by itself when the dashboard restarts.
+(function cam() {
+  const i = new Image();
+  i.onload = () => { $("camimg").src = i.src; setTimeout(cam, 120); };
+  i.onerror = () => setTimeout(cam, 1000);
+  i.src = "/camera.jpg?" + Date.now();
+})();
 </script>
 <script type="importmap">{"imports": {"three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>

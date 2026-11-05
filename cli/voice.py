@@ -110,6 +110,8 @@ class Voice(threading.Thread):
         super().__init__(daemon=True)
         self.robot, self.agent, self.wake = robot, agent, wake
         self.tts = make_tts(tts_voice)
+        self.cache = {}                          # wake replies, rendered once: TTS takes about a second
+        threading.Thread(target=lambda: [self._pcm(t) for t in HEARD.values()], daemon=True).start()
         self.stt = Whisper(whisper_model)
         self.mode = "idle"                       # idle (wake word) | listening (command) | busy
         self.buf, self.speech, self.silence, self.floor = bytearray(), False, 0.0, 200.0
@@ -133,7 +135,8 @@ class Voice(threading.Thread):
         self.buf += pcm
         self.silence = 0.0 if loud else self.silence + CHUNK_S
         seconds = len(self.buf) / (2 * RATE)
-        if self.silence >= 0.8 or seconds > 12:
+        end = 0.5 if self.mode == "idle" else 0.8     # the wake phrase is short: answer it sooner
+        if self.silence >= end or seconds > 12:
             self.speech = False
             if seconds - self.silence >= 0.3:
                 with self.lock:
@@ -149,7 +152,7 @@ class Voice(threading.Thread):
     # --- speaker side ---------------------------------------------------------------------------
     def say(self, text):
         self.robot.request("face.set", say=text, ms=4000)
-        pcm = self.tts(text)
+        pcm = self._pcm(text) if text in HEARD.values() else self.tts(text)
         prev, self.mode = self.mode, "busy"
         self.robot.send_audio(pcm)
         time.sleep(len(pcm) / (2 * RATE) + 0.3)
@@ -160,6 +163,11 @@ class Voice(threading.Thread):
         self.mode = prev if prev != "busy" else "idle"
         self.deaf_until = time.monotonic() + 0.4
         self._mic(True)
+
+    def _pcm(self, text):
+        if text not in self.cache:
+            self.cache[text] = self.tts(text)
+        return self.cache[text]
 
     # --- main loop ------------------------------------------------------------------------------
     def run(self):
