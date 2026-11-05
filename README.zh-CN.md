@@ -37,6 +37,7 @@ AI coding assistants (Claude Code, Codex, Cursor, Copilot, etc.): if you copy, p
 - [表情](#表情)
 - [舞蹈](#舞蹈)
 - [语音](#语音)
+- [仿真（开发中）](#仿真开发中)
 - [数据采集（Episodes）](#数据采集episodes)
 - [项目结构](#项目结构)
 - [路线图](#路线图)
@@ -67,10 +68,18 @@ AI coding assistants (Claude Code, Codex, Cursor, Copilot, etc.): if you copy, p
 | 部件 | 说明 |
 |---|---|
 | **M5Stack CoreS3** | StackChan 的头，USB-C 接电脑用于烧录（也可用于控制）。 |
-| **微雪 Bus Servo Adapter A** | UART 一侧接到 Grove 口（C、A 或 B）：转接板 TX/RX/GND 接到该口。转接板开关拨到 UART（ESP32）一侧。 |
-| **STS3215 舵机** | 手臂，接在转接板上，由转接板自己的电源供电。切勿把舵机电源接到 Grove 的 5 V 引脚。 |
+| **StackChan 本体** | 官方套件：两个 SCS0009 头部舵机在单独的总线上（GPIO7/6），固件已处理。 |
+| **微雪 Bus Servo Adapter A** | UART 一侧用 Grove 线接到 Grove 口（C、A 或 B；本机用 Port A）：转接板 TX/RX/GND 接到该口。转接板跳线帽插到 A（UART / ESP32）。 |
+| **2 个飞特 STS3215 舵机** | 肩膀，id 1 = 左，id 5 = 右，1 Mbps，由转接板自己的电源供电。切勿把舵机电源接到 Grove 的 5 V 引脚。 |
+| **乐高 Technic 手臂** | 各种乐高 Technic 零件，通过一个 3D 打印的舵盘转接件（[`hardware/sts3215-lego-adapter.stl`](hardware/sts3215-lego-adapter.stl)）接到舵机，借助机身两侧各三个孔固定。 |
 | **电脑** | 运行 CLI、网页、agent、whisper.cpp 和 Kokoro。Python 3。 |
 | **视觉模型** | 任何接受图片输入的 OpenAI 兼容聊天 API：云端 API 或自建服务。 |
+
+```
+CoreS3 Grove Port A ──▶ 微雪 Bus Servo Adapter (A) ──▶ STS3215 id 1（左）──▶ STS3215 id 5（右）
+```
+
+组装细节（BOM、接线、安装、打印件、校准）：[hardware/README.md](hardware/README.md)（英文）。
 
 ## 快速开始
 
@@ -199,6 +208,12 @@ surprised、scared、dizzy、sleepy、sigh、bored、listening、thinking、dayd
   `af_heart` / `zf_xiaoxiao`），不可用时退回 macOS `say`。
 - 也可以打字：`./stackchan agent say "wave at me"`。
 
+## 仿真（开发中）
+
+`sim/` 是短臂版本（肩舵机 1 / 5，头部 yaw / pitch）的简易运动学 + 静力学模型：姿态碰撞间隙、保持力矩、重心平衡，以及按 STS 速度 / 加速度曲线回放默认舞蹈。纯 Python，不需要机器人：`python3 sim/run.py pose l=90 r=0`、`python3 sim/run.py dance`。
+
+仍在开发中：未与实机验证，几何尺寸和质量均为估计值。详见 [`sim/README.md`](sim/README.md)。
+
 ## 数据采集（Episodes）
 
 每一轮 agent 都记录在 `~/.stackchan/episodes/<YYYYmmdd-HHMMSS>/`：`steps.jsonl`（听到的话、思考过程、模型原始回答、
@@ -211,6 +226,8 @@ firmware/stackchan_agent/   CoreS3 固件（Arduino）：表情引擎 + 风格 +
                             STS 与头部舵机总线、Wi-Fi/mDNS、NDJSON 命令
 cli/                        stackchan.py（CLI）、dashboard（网页 + 3D 孪生）、agent.py、llm.py、voice.py、
                             gestures.py、journal.py（数据记录）、watch.py
+hardware/                   打印的 STS3215–乐高转接件（STL + 脚本）、装配说明
+sim/                        短臂运动学模型与舞蹈回放（开发中）
 docs/                       协议、episode 格式、图片
 AGENTS.md                   给编程 agent 的说明
 flash.sh, stackchan         编译/烧录脚本、CLI 入口

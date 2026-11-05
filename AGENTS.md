@@ -26,6 +26,7 @@ Rules:
 - Before moving a servo you have not moved yet in this session, `read` it and check `volt` (≈ 12 V) and `temp` (< 60 °C).
 - `ok: false` / `no reply`: the servo is unpowered, unplugged, or has another id. Do not retry the move blindly: `scan` first.
 - New STS3215 servos all ship as id 1. Connect a new one alone and give it its id (`set-id 1 <id>`) before chaining it with the others.
+- STS position mode never crosses the 0/360 deg wrap: a goal on the other side is reached the long way round (this twisted an arm cable once). Pose the arm at home and run `center <id>` so home is the servo's middle (0 deg), then `calibrate --arms`.
 - Servo ids (suggested by `cad-gripper`): left shoulder 1, elbow 2, wrist 3, gripper 4; right shoulder 5, gripper 6.
 - Never run `wifi set` with a password in the command line or in a file in this repo.
 

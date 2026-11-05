@@ -159,6 +159,8 @@ def main(argv=None):
     p = sub.add_parser("set-id", help="change a servo id (only that servo on the bus if ids collide)")
     p.add_argument("id", type=int)
     p.add_argument("new_id", type=int)
+    p = sub.add_parser("center", help="make the present position the servo's middle (0 deg): pose the joint at home first")
+    p.add_argument("id", type=int)
     p = sub.add_parser("limits", help="read or set soft limits (deg)")
     p.add_argument("id", type=int)
     p.add_argument("lo", type=float, nargs="?")
@@ -288,6 +290,8 @@ def main(argv=None):
             out(rq("servo.torque", id=a.id, on=a.state == "on"))
         elif a.cmd == "set-id":
             out(rq("servo.set_id", id=a.id, new_id=a.new_id))
+        elif a.cmd == "center":
+            out(rq("servo.center", id=a.id))
         elif a.cmd == "limits":
             args = {"lo_deg": a.lo, "hi_deg": a.hi} if a.hi is not None else {}
             out(rq("servo.limits", id=a.id, **args))

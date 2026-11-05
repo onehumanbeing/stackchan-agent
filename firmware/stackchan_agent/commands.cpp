@@ -171,6 +171,12 @@ const char *run(int ch, const String &cmd, JsonVariantConst a, JsonObject r) {
     if (bus.ping(to)) return "new_id is already on the bus";
     return bus.setId(id, to) && bus.ping(to) ? nullptr : "set_id failed";
   }
+  if (cmd == "servo.center") {   // so that moves around here never meet the 0/360 wrap (position mode cannot cross it)
+    sts::State st;
+    if (!bus.center(id) || !bus.readState(id, st) || abs(st.pos - 2048) > 8) return "center failed";
+    stateJson(r, id, st);
+    return nullptr;
+  }
   if (cmd == "servo.limits") {
     if (!a["lo_deg"].isNull() && !a["hi_deg"].isNull()) settings::setLimits(id, toRaw(a["lo_deg"]), toRaw(a["hi_deg"]));
     int lo, hi;

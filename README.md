@@ -37,6 +37,7 @@ Updates: [X @iamhenryyuan](https://x.com/iamhenryyuan)
 - [Expressions](#expressions)
 - [Dance](#dance)
 - [Voice](#voice)
+- [Simulation](#simulation-work-in-progress)
 - [Episodes](#episodes)
 - [Project layout](#project-layout)
 - [Roadmap](#roadmap)
@@ -69,10 +70,18 @@ Updates: [X @iamhenryyuan](https://x.com/iamhenryyuan)
 | Part | Notes |
 |---|---|
 | **M5Stack CoreS3** | The StackChan head, USB-C to the computer for flashing (and optionally for control). |
-| **Waveshare Bus Servo Adapter A** | UART side wired to a Grove port (C, A or B): adapter TX/RX/GND to the port. Set the adapter's switch to the UART (ESP32) side. |
-| **STS3215 servos** | The arms, on the adapter, powered from the adapter's own supply. Never feed the servo supply into the Grove 5 V pin. |
+| **StackChan body** | The official kit: its two SCS0009 head servos are on their own bus (GPIO7/6), handled by the firmware. |
+| **Waveshare Bus Servo Adapter A** | UART side wired to a Grove port (C, A or B; Port A here) with a Grove cable: adapter TX/RX/GND to the port. Set the adapter's jumper to A (UART / ESP32). |
+| **2× Feetech STS3215 servos** | The shoulders, id 1 = left, id 5 = right, 1 Mbps, powered from the adapter's own supply. Never feed the servo supply into the Grove 5 V pin. |
+| **LEGO Technic arms** | Assorted LEGO Technic parts on a 3D-printed horn adapter ([`hardware/sts3215-lego-adapter.stl`](hardware/sts3215-lego-adapter.stl)), mounted through the three holes on each side of the body. |
 | **Computer** | Runs the CLI, live page, agent, whisper.cpp and Kokoro. Python 3. |
 | **Vision model** | Any OpenAI-compatible chat API that accepts images: a cloud API or your own server. |
+
+```
+CoreS3 Grove Port A ──▶ Waveshare Bus Servo Adapter (A) ──▶ STS3215 id 1 (left) ──▶ STS3215 id 5 (right)
+```
+
+Build details (BOM, wiring, mounting, the printed part, calibration): [hardware/README.md](hardware/README.md).
 
 ## Quick start
 
@@ -208,6 +217,12 @@ speaker.
   `af_heart` / `zf_xiaoxiao` by language), falling back to macOS `say`.
 - Typing works too: `./stackchan agent say "wave at me"`.
 
+## Simulation (work in progress)
+
+`sim/` holds a small kinematic + static model of the short-arm build (shoulder servos 1 / 5, head yaw / pitch): pose clearances, holding torques, balance, and a replay of the default dance through the STS speed / acceleration profile. Pure Python, no robot needed: `python3 sim/run.py pose l=90 r=0`, `python3 sim/run.py dance`.
+
+Work in progress: not validated against the real robot; geometry and masses are approximate. See [`sim/README.md`](sim/README.md).
+
 ## Episodes
 
 Every agent turn is recorded under `~/.stackchan/episodes/<YYYYmmdd-HHMMSS>/`: `steps.jsonl` (heard, thinking, raw
@@ -221,6 +236,8 @@ firmware/stackchan_agent/   CoreS3 firmware (Arduino): face engine + styles + ex
                             STS + head servo buses, Wi-Fi/mDNS, NDJSON commands
 cli/                        stackchan.py (CLI), dashboard (live page + 3D twin), agent.py, llm.py, voice.py,
                             gestures.py, journal.py (episodes), watch.py
+hardware/                   printed STS3215-to-LEGO adapter (STL + script), build notes
+sim/                        short-arm kinematic model and dance replay (work in progress)
 docs/                       protocol, episode format, images
 AGENTS.md                   guide for coding agents
 flash.sh, stackchan         build/flash script, CLI entry point

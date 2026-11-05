@@ -149,4 +149,11 @@ bool Bus::setId(uint8_t id, uint8_t new_id) {
   return write8(new_id, LOCK, 1);
 }
 
+bool Bus::center(uint8_t id) {
+  if (!write8(id, LOCK, 0)) return false;
+  write8(id, TORQUE_ENABLE, 128);                    // STS: "the present position is now 2048" (offset saved in EEPROM);
+  delay(50);                                         // the servo does not always acknowledge it, so the caller reads back
+  return write8(id, LOCK, 1);
+}
+
 }  // namespace sts

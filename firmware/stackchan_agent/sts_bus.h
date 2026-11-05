@@ -48,6 +48,7 @@ class Bus {
   // Same goal frame to several servos in one packet (they start together); no reply.
   void syncMove(const uint8_t *ids, const int *pos, int n, int speed, int acc);
   bool torque(uint8_t id, bool on) { return write8(id, TORQUE_ENABLE, on ? 1 : 0); }
+  bool center(uint8_t id);                            // make the present position the middle (raw 2048, 0 deg)
   bool setId(uint8_t id, uint8_t new_id);
   // Diagnostic: broadcast ping on rx/tx at baud, return the raw bytes heard within 20 ms (echo included).
   int probe(int rx, int tx, uint32_t baud, uint8_t *out, int max);
