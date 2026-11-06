@@ -325,8 +325,21 @@ const char *run(int ch, const String &cmd, JsonVariantConst a, JsonObject r) {
 }
 }  // namespace
 
+// Holding a pose, the head servos hum. They hold it by friction, so relax them HEAD_RELAX_MS after the last move;
+// the next move turns torque back on.
+constexpr uint32_t HEAD_RELAX_MS = 3000;
+uint32_t head_moved_at = 0;
+bool head_tight = false;
+
+void relaxHeadWhenIdle() {
+  if (!head_tight || millis() - head_moved_at < HEAD_RELAX_MS) return;
+  for (int hid = 1; hid <= 2; hid++) head.write8(hid, sts::TORQUE_ENABLE, 0);
+  head_tight = false;
+}
+
 bool moveHead(int hid, int raw, int ms) {
   raw = constrain(raw, 0, 1023);
+  head_moved_at = millis() + ms, head_tight = true;
   uint8_t d[6] = {(uint8_t)(raw >> 8), (uint8_t)raw, (uint8_t)(ms >> 8), (uint8_t)ms, 0, 0};
   return head.write8(hid, sts::TORQUE_ENABLE, 1) && head.write(hid, sts::GOAL_POS, d, 6);
 }
@@ -403,6 +416,7 @@ void micLoop() {
 }
 
 void loop() {
+  relaxHeadWhenIdle();
   cameraLoop();
   micLoop();
   for (int ch = USB; ch < net::MAX_CLIENTS; ch++) {
