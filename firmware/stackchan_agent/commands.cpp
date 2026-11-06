@@ -1,6 +1,7 @@
 #include "commands.h"
 
 #include <ArduinoJson.h>
+#include <M5Unified.h>
 #include <WiFi.h>
 #include <mbedtls/base64.h>
 
@@ -20,6 +21,19 @@ sts::Bus bus;
 // Same packets as STS, but registers are big endian and positions are 0..1023 over 300 degrees.
 sts::Bus head(Serial2);
 constexpr int HEAD_RX = 7, HEAD_TX = 6;
+// The body switches the head servos' supply through a PY32 IO expander (internal I2C 0x6F, pin 0 = VM_EN). The stock
+// firmware turns it on at boot; without it the head is limp after a full power-off.
+constexpr uint8_t PY32 = 0x6F, PY32_VERSION = 0x02, PY32_DIR = 0x03, PY32_OUT = 0x05, PY32_PU = 0x09, PY32_PD = 0x0B, VM_EN = 1;
+constexpr uint32_t PY32_HZ = 100000;
+
+bool headPower(bool on) {
+  uint8_t v = M5.In_I2C.readRegister8(PY32, PY32_VERSION, PY32_HZ);
+  if (v == 0 || v == 0xFF) return false;       // no StackChan body
+  M5.In_I2C.bitOn(PY32, PY32_DIR, VM_EN, PY32_HZ);
+  M5.In_I2C.bitOff(PY32, PY32_PD, VM_EN, PY32_HZ);
+  M5.In_I2C.bitOn(PY32, PY32_PU, VM_EN, PY32_HZ);
+  return on ? M5.In_I2C.bitOn(PY32, PY32_OUT, VM_EN, PY32_HZ) : M5.In_I2C.bitOff(PY32, PY32_OUT, VM_EN, PY32_HZ);
+}
 
 struct Pins { int rx, tx; const char *port; };
 constexpr Pins CANDIDATES[] = {   // CoreS3 Grove ports, both TX/RX orders
@@ -98,6 +112,8 @@ void sysInfo(JsonObject r) {
   JsonObject b = r["bus"].to<JsonObject>();
   b["ok"] = bus.ok(), b["port"] = bus_port, b["rx"] = bus.rx(), b["tx"] = bus.tx(), b["baud"] = bus.baud();
   b["errors"] = bus.errors();
+  JsonObject hp = r["head_power"].to<JsonObject>();
+  hp["py32"] = M5.In_I2C.readRegister8(PY32, PY32_VERSION, PY32_HZ), hp["out"] = M5.In_I2C.readRegister8(PY32, PY32_OUT, PY32_HZ);
   r["face"] = face::expression(), r["face_style"] = face::style(), r["camera"] = camera::ok();
 }
 
@@ -203,6 +219,7 @@ const char *run(int ch, const String &cmd, JsonVariantConst a, JsonObject r) {
   if (cmd == "speaker.stop") { audio::stop(); return nullptr; }
   if (cmd == "speaker.volume") { audio::setVolume(a["volume"] | 180); return nullptr; }
   if (cmd == "speaker.status") { r["playing"] = audio::playing(); r["mic"] = audio::micClient() >= 0; return nullptr; }
+  if (cmd == "head.power") { r["ok"] = headPower(a["on"] | true); return nullptr; }   // {"on": false} = limp head
   if (cmd == "head.read") {   // raw 0..1023, deg = (raw - 512) * 300 / 1024
     JsonArray out = r["servos"].to<JsonArray>();
     for (int hid = 1; hid <= 2; hid++) {
@@ -326,6 +343,8 @@ void moveArms(const uint8_t *ids, const int *raws, int n, int speed, int acc) {
 
 void begin() {
   bool ok = detectBus();
+  headPower(true);
+  delay(200);                                  // let the servos boot before the first read
   head.begin(HEAD_RX, HEAD_TX, 1000000, 2);
   face::say(ok ? String("bus ") + bus_port + " ok" : "bus not found", 4000);
 }
