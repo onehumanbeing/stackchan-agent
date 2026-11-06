@@ -119,9 +119,9 @@ def say_pcm(text, voice="Samantha"):
 
 
 class Voice(threading.Thread):
-    def __init__(self, robot, agent, whisper_model, tts_voice=None, wake=WAKE):
+    def __init__(self, robot, agent, whisper_model, tts_voice=None, wake=WAKE, follow_s=FOLLOW_S):
         super().__init__(daemon=True)
-        self.robot, self.agent, self.wake = robot, agent, wake
+        self.robot, self.agent, self.wake, self.follow_s = robot, agent, wake, follow_s
         self.tts = make_tts(tts_voice)
         self.cache = {}                          # wake replies, rendered once: TTS takes about a second
         threading.Thread(target=lambda: [self._pcm(t) for t in HEARD.values()], daemon=True).start()
@@ -229,7 +229,11 @@ class Voice(threading.Thread):
                 self.agent.hear(text)
                 self.agent.idle.wait(60)
             self._mic(True)
-            self._listen(FOLLOW_S)                   # a conversation: the next sentence needs no wake word
+            if self.follow_s:
+                self._listen(self.follow_s)          # a conversation: the next sentence needs no wake word
+            else:
+                self.mode = "idle"                   # every command needs the wake word again
+                self.agent._pub(status="idle")
 
     def _wake(self):
         self.mode = "listening"

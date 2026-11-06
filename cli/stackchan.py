@@ -217,6 +217,8 @@ def main(argv=None):
                    help="whisper.cpp ggml model: enables voice (wake word 'Hey Buddy', robot mic + speaker)")
     p.add_argument("--tts-voice", default=os.environ.get("STACKCHAN_TTS_VOICE"),
                    help="Kokoro voice (default af_heart / zf_xiaoxiao by language) or a macOS `say` voice")
+    p.add_argument("--follow-s", type=float, default=8,
+                   help="after an answer, listen this long without the wake word (0 = always say the wake word first)")
     p.add_argument("--llm-think", choices=["low", "high", "off"], default="low",
                    help="how much the model reasons before acting: low (fast, default), high, off (fastest)")
     p.add_argument("--lang", choices=["zh", "en"], default=os.environ.get("STACKCHAN_LANG", "en"),
@@ -266,7 +268,7 @@ def main(argv=None):
         from dashboard import serve
         llm = a.llm_url and {"url": a.llm_url, "model": a.llm_model, "api_key": os.environ.get("STACKCHAN_LLM_KEY"),
                              "on": a.agent, "record": not a.no_record, "motion": not a.no_motion,
-                             "whisper_model": a.whisper_model, "tts_voice": a.tts_voice, "lang": a.lang, "think": a.llm_think, "api": a.llm_api}
+                             "whisper_model": a.whisper_model, "tts_voice": a.tts_voice, "lang": a.lang, "think": a.llm_think, "api": a.llm_api, "follow_s": a.follow_s}
         serve(a.host or DEFAULT_HOST, parse_ids(a.ids) if a.ids else None, a.hz, a.fps, a.listen, a.http_port, llm, a.qr)
         return 0
     try:

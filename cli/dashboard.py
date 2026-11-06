@@ -326,7 +326,7 @@ def serve(host, ids, hz, fps, listen, port, llm=None, qr=None):
         agent.switch(llm.get("on", False))
         if llm.get("whisper_model"):
             from voice import Voice
-            Voice(robot, agent, llm["whisper_model"], llm.get("tts_voice")).start()
+            Voice(robot, agent, llm["whisper_model"], llm.get("tts_voice"), follow_s=llm.get("follow_s", 8)).start()
     httpd = ThreadingHTTPServer((listen, port), make_handler(robot, agent))
     httpd.daemon_threads = True
     urls = [f"http://{ip}:{port}/" for ip in (lan_ips() if listen == "0.0.0.0" else [listen])]
