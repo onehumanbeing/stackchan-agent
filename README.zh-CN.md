@@ -132,6 +132,14 @@ brew install whisper-cpp ffmpeg              # 语音识别（本地）
 
 打开 `http://localhost:8765/` 查看网页，然后说 "Hey Buddy"。
 
+用 Claude 代替 OpenAI 兼容服务：加 `--llm-api anthropic`，同样的请求改走 `/v1/messages`（语音识别和 TTS 仍在本地）：
+
+```sh
+STACKCHAN_LLM_KEY=sk-ant-... ./stackchan --host stackchan.local dash \
+  --llm-api anthropic --llm-url https://api.anthropic.com --llm-model claude-sonnet-5-5 \
+  --whisper-model ~/models/ggml-large-v3-turbo.bin --agent --lang zh
+```
+
 ## 在编程 agent 中使用
 
 每条 CLI 命令输出一个 JSON 对象（`stream` 输出 NDJSON），所以 Claude Code、Codex 等编程 agent 可以直接控制机器人。
@@ -157,9 +165,9 @@ brew install whisper-cpp ffmpeg              # 语音识别（本地）
   "摇两次头" 会变成一串带时长的 yaw 步骤，不需要固定的动作列表。
 - **边说边动**：每句 `say` 在后台播放，同时执行后面的步骤。
 - **手势**（`wave`、`nod`、`shake`）是 `cli/gestures.py` 里的关键帧，加新手势不用重新烧录。
-- **推理强度**：`--llm-think low|high|off`。默认 `low`（简短推理，比 `high` 快几倍）；`off` 最快。
+- **推理强度**：`--llm-think low|high|off`。默认 `low`（简短推理，比 `high` 快几倍）；`off` 最快。用 `--llm-api anthropic` 时只有 `high` 会开启 extended thinking。
 - **参数**：`--no-motion` 让所有舵机不动（只有表情和语音，唤醒时头会轻微抬起）；`--no-record` 关闭数据记录；`--qr URL` 在页面右下角显示一个链接二维码。
-  也可用环境变量 `STACKCHAN_LLM_URL`、`STACKCHAN_LLM_MODEL`、`STACKCHAN_LLM_KEY`、`STACKCHAN_WHISPER_MODEL` 代替参数。
+  也可用环境变量 `STACKCHAN_LLM_URL`、`STACKCHAN_LLM_MODEL`、`STACKCHAN_LLM_KEY`、`STACKCHAN_LLM_API`、`STACKCHAN_WHISPER_MODEL` 代替参数。
 
 ## 表情
 

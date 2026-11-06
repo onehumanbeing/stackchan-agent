@@ -43,9 +43,9 @@ LANGS = {"zh": "Always speak Mandarin Chinese (简体中文), whatever language 
 
 
 class Agent(threading.Thread):
-    def __init__(self, robot, url, model, api_key=None, record=True, motion=True, lang="en", think="low"):
+    def __init__(self, robot, url, model, api_key=None, record=True, motion=True, lang="en", think="low", api="openai"):
         super().__init__(daemon=True)
-        self.robot, self.url, self.model, self.api_key = robot, url, model, api_key
+        self.robot, self.url, self.model, self.api_key, self.api = robot, url, model, api_key, api
         self.heard, self.on, self.history = queue.Queue(), False, []
         self.idle = threading.Event()             # set between turns (voice.py waits on it)
         self.idle.set()
@@ -116,7 +116,7 @@ class Agent(threading.Thread):
             self._pub(status="acting")
             steps.append(self.step(act, cal))
 
-        answer = llm.stream(self.url, self.model, messages, think, line, max_tokens=1200, api_key=self.api_key, think=self.think)
+        answer = llm.stream(self.url, self.model, messages, think, line, max_tokens=1200, api_key=self.api_key, think=self.think, api=self.api)
         self._hush()
         self.history += [{"role": "user", "content": f"Heard: {text!r}"}, {"role": "assistant", "content": answer}]
         self.journal.write({"heard": text, "thinking": self.view["thinking"], "answer": answer, "steps": steps,

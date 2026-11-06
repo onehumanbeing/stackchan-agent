@@ -208,6 +208,8 @@ def main(argv=None):
     p.add_argument("--llm-url", default=os.environ.get("STACKCHAN_LLM_URL"),
                    help="OpenAI-compatible endpoint (e.g. http://localhost:8000/v1): enables the agent")
     p.add_argument("--llm-model", default=os.environ.get("STACKCHAN_LLM_MODEL", "default"))
+    p.add_argument("--llm-api", choices=["openai", "anthropic"], default=os.environ.get("STACKCHAN_LLM_API", "openai"),
+                   help="openai: /chat/completions; anthropic: Claude /v1/messages (--llm-url without /v1, key in STACKCHAN_LLM_KEY)")
     p.add_argument("--agent", action="store_true", help="start with the agent switched on")
     p.add_argument("--no-record", action="store_true", help="do not write episodes to ~/.stackchan/episodes")
     p.add_argument("--no-motion", action="store_true", help="agent thinks and changes faces but never moves a servo (except a small head lift on wake-up)")
@@ -264,7 +266,7 @@ def main(argv=None):
         from dashboard import serve
         llm = a.llm_url and {"url": a.llm_url, "model": a.llm_model, "api_key": os.environ.get("STACKCHAN_LLM_KEY"),
                              "on": a.agent, "record": not a.no_record, "motion": not a.no_motion,
-                             "whisper_model": a.whisper_model, "tts_voice": a.tts_voice, "lang": a.lang, "think": a.llm_think}
+                             "whisper_model": a.whisper_model, "tts_voice": a.tts_voice, "lang": a.lang, "think": a.llm_think, "api": a.llm_api}
         serve(a.host or DEFAULT_HOST, parse_ids(a.ids) if a.ids else None, a.hz, a.fps, a.listen, a.http_port, llm, a.qr)
         return 0
     try:

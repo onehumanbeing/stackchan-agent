@@ -321,7 +321,7 @@ def serve(host, ids, hz, fps, listen, port, llm=None, qr=None):
     if llm:
         from agent import Agent
         agent = Agent(robot, llm["url"], llm["model"], llm.get("api_key"), llm.get("record", True), llm.get("motion", True),
-                      llm.get("lang", "en"), llm.get("think", "low"))
+                      llm.get("lang", "en"), llm.get("think", "low"), llm.get("api", "openai"))
         agent.start()
         agent.switch(llm.get("on", False))
         if llm.get("whisper_model"):
