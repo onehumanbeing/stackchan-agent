@@ -140,6 +140,20 @@ STACKCHAN_LLM_KEY=sk-ant-... ./stackchan --host stackchan.local dash \
   --whisper-model ~/models/ggml-large-v3-turbo.bin --agent --lang zh
 ```
 
+更好听的声音：在 GPU 机器上跑 [cli/cosyvoice_server.py](cli/cosyvoice_server.py)（CosyVoice 2），用 ssh 隧道转到本机，再加
+`--tts-url http://127.0.0.1:50021/tts`。收到第一段音频就开口（DGX Spark 上约 1 秒）；服务不在时自动用 Kokoro。
+
+工具（需 `--llm-api anthropic`）：`--tools tools.json` 让模型在一轮对话中查资料：先说一句短话，调用工具，再回答。
+文件里写一条命令和工具定义；调用时运行 `command + [name]`，输入以 JSON 从 stdin 传入，读 stdout 作为结果：
+
+```json
+{"command": ["python3", "my_tools.py"], "prompt": "可选：追加的 system prompt",
+ "tools": [{"name": "lookup", "description": "...", "input_schema": {"type": "object", "properties": {"q": {"type": "string"}}},
+            "secret": false}]}
+```
+
+`"secret": true`（比如验证码）的那一轮不写入 episode 日志，也不进对话历史。
+
 ## 在编程 agent 中使用
 
 每条 CLI 命令输出一个 JSON 对象（`stream` 输出 NDJSON），所以 Claude Code、Codex 等编程 agent 可以直接控制机器人。
@@ -165,7 +179,7 @@ STACKCHAN_LLM_KEY=sk-ant-... ./stackchan --host stackchan.local dash \
   "摇两次头" 会变成一串带时长的 yaw 步骤，不需要固定的动作列表。
 - **边说边动**：每句 `say` 在后台播放，同时执行后面的步骤。
 - **手势**（`wave`、`nod`、`shake`）是 `cli/gestures.py` 里的关键帧，加新手势不用重新烧录。
-- **推理强度**：`--llm-think low|high|off`。默认 `low`（简短推理，比 `high` 快几倍）；`off` 最快。用 `--llm-api anthropic` 时只有 `high` 会开启 extended thinking。
+- **推理强度**：`--llm-think low|high|off`。默认 `low`（简短推理，比 `high` 快几倍）；`off` 最快。用 `--llm-api anthropic` 时只有 `high` 会开启 extended thinking（会自行思考的新模型会被关掉思考）。
 - **参数**：`--no-motion` 让所有舵机不动（只有表情和语音，唤醒时头会轻微抬起）；`--no-record` 关闭数据记录；`--qr URL` 在页面右下角显示一个链接二维码。
   也可用环境变量 `STACKCHAN_LLM_URL`、`STACKCHAN_LLM_MODEL`、`STACKCHAN_LLM_KEY`、`STACKCHAN_LLM_API`、`STACKCHAN_WHISPER_MODEL` 代替参数。
 

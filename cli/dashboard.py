@@ -321,12 +321,12 @@ def serve(host, ids, hz, fps, listen, port, llm=None, qr=None):
     if llm:
         from agent import Agent
         agent = Agent(robot, llm["url"], llm["model"], llm.get("api_key"), llm.get("record", True), llm.get("motion", True),
-                      llm.get("lang", "en"), llm.get("think", "low"), llm.get("api", "openai"))
+                      llm.get("lang", "en"), llm.get("think", "low"), llm.get("api", "openai"), llm.get("tools"))
         agent.start()
         agent.switch(llm.get("on", False))
         if llm.get("whisper_model"):
             from voice import Voice
-            Voice(robot, agent, llm["whisper_model"], llm.get("tts_voice"), follow_s=llm.get("follow_s", 8)).start()
+            Voice(robot, agent, llm["whisper_model"], llm.get("tts_voice"), follow_s=llm.get("follow_s", 8), tts_url=llm.get("tts_url")).start()
     httpd = ThreadingHTTPServer((listen, port), make_handler(robot, agent))
     httpd.daemon_threads = True
     urls = [f"http://{ip}:{port}/" for ip in (lan_ips() if listen == "0.0.0.0" else [listen])]

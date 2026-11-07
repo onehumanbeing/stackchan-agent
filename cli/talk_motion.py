@@ -52,6 +52,10 @@ class Talk:
         self.thread.start()
         return self
 
+    def more(self, pcm, offset_s):
+        """More audio of the same sentence (streamed TTS), starting offset_s into it."""
+        self.times += [offset_s + t for t in stresses(pcm) if not self.times or offset_s + t - self.times[-1] >= GAP_S]
+
     def stop(self):
         self.end.set()
         self.thread.join(2)
@@ -61,7 +65,12 @@ class Talk:
 
     def _run(self):
         moves = ["left", "nod", "right", "tilt"]
-        for k, t in enumerate(self.times):
+        k = 0
+        while not self.end.is_set():
+            if k >= len(self.times):             # streamed audio may still add stresses
+                self.end.wait(0.1)
+                continue
+            t, k = self.times[k], k + 1
             if self.end.wait(max(0.0, self.t0 + t - 0.2 - time.monotonic())):
                 return
             if not self._free():
