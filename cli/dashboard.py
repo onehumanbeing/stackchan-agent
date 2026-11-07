@@ -49,11 +49,17 @@ class Robot(threading.Thread):
 
     def fire(self, cmd, **args):
         """Send a command without waiting for its reply (timed sequences such as the dance)."""
+        self._moved(cmd)
         self.outbox.put((cmd, args, None))
+
+    def _moved(self, cmd):
+        if cmd in ("head.move", "servo.move", "servo.sync"):   # touch.py: a move it was not told to make is a hand
+            self.last_move_at = time.monotonic()
 
     def request(self, cmd, timeout=5.0, **args):
         """Thread-safe command over the shared connection; returns the result or raises RuntimeError."""
         reply = Reply()
+        self._moved(cmd)
         self.outbox.put((cmd, args, reply))
         if not reply.done.wait(timeout):
             raise TimeoutError(f"{cmd}: no reply in {timeout} s")
@@ -106,6 +112,8 @@ class Robot(threading.Thread):
             if ids:
                 ask("stream.start", ids=ids, hz=self.hz)
             ask("camera.start", fps=self.fps)
+            if getattr(self, "volume", None) is not None:
+                ask("speaker.volume", volume=self.volume)
             self._set(connected=True, error="", via=f"ws://{ip}:81")
             next_info = next_scan = next_head = 0.0
             while True:
@@ -219,6 +227,16 @@ def make_handler(robot, agent=None):
             elif path == "/api/dance":
                 q = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
                 self._send(json.dumps(dance_api(robot, agent, q)).encode(), "application/json")
+            elif path == "/api/face":           # {"expression": E, "ms": N}: N > 0 shows it briefly, then back
+                q = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
+                args = {"expression": q.get("expression", "neutral")}
+                if q.get("ms"):
+                    args["ms"] = int(q["ms"])
+                try:
+                    robot.request("face.set", **args)
+                    self._send(b'{"ok":true}', "application/json")
+                except (RuntimeError, TimeoutError) as e:
+                    self._send(json.dumps({"ok": False, "error": str(e)}).encode(), "application/json", 503)
             elif path == "/api/body":
                 body = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p).get("set")
                 if body not in ("simple", "full"):
@@ -316,17 +334,22 @@ def serve(host, ids, hz, fps, listen, port, llm=None, qr=None):
     qr: a link shown as a QR code in the page corner (e.g. where to follow the project)."""
     robot = Robot(host, ids, hz, fps)
     robot.state["qr"] = qr
+    robot.volume = llm.get("volume") if llm else None
     robot.start()
     agent = None
     if llm:
         from agent import Agent
         agent = Agent(robot, llm["url"], llm["model"], llm.get("api_key"), llm.get("record", True), llm.get("motion", True),
-                      llm.get("lang", "en"), llm.get("think", "low"), llm.get("api", "openai"), llm.get("tools"))
+                      llm.get("lang", "en"), llm.get("think", "low"), llm.get("api", "openai"), llm.get("tools"),
+                      llm.get("look", False), llm.get("max_says", 0))
         agent.start()
         agent.switch(llm.get("on", False))
         if llm.get("whisper_model"):
             from voice import Voice
-            Voice(robot, agent, llm["whisper_model"], llm.get("tts_voice"), follow_s=llm.get("follow_s", 8), tts_url=llm.get("tts_url")).start()
+            voice = Voice(robot, agent, llm["whisper_model"], llm.get("tts_voice"), follow_s=llm.get("follow_s", 8), tts_url=llm.get("tts_url"))
+            voice.start()
+        from touch import Touch
+        Touch(robot, agent, voice if llm.get("whisper_model") else None).start()
     httpd = ThreadingHTTPServer((listen, port), make_handler(robot, agent))
     httpd.daemon_threads = True
     urls = [f"http://{ip}:{port}/" for ip in (lan_ips() if listen == "0.0.0.0" else [listen])]

@@ -39,13 +39,19 @@ Decide the movement yourself from what you hear and see.  If no gesture fits, co
 and do exactly what is asked (e.g. "shake your head twice" = yaw 20, -20, 20, -20, 0 with ms 250).
 End facing ahead; your arms go back to rest by themselves.
 Talk while you move, like a person: start with a short "say" (one sentence: people wait for your voice), then the
-moves that go with it (they run while that sentence is spoken), then the next "say" and its moves.  1..3 sentences,
-at most 10 steps in all.  Think briefly. %s"""
+moves that go with it (they run while that sentence is spoken), then the next "say" and its moves.  While you speak,
+your head nods and sways by itself; add head / arm / gesture steps when asked to move or when a move says more than
+words.  1..3 sentences, at most 10 steps in all.  Think briefly. %s"""
 TOOLS_NOTE = """
 You have tools.  Everything you write is still JSON lines, also around tool calls: before a call, one short
 {"say": ...} (e.g. "Let me check"), no other text; after it, the answer in one or two short sentences, with no lists,
 links or ids, which are hard to listen to."""
 TOOL_OUT = 6000              # characters of a tool's output the model sees
+LOOK = {"name": "look", "description": "See through the camera in your face: what is in front of you right now. Use it only "
+        "when what you are asked needs your eyes.", "input_schema": {"type": "object", "properties": {}}}
+LOOK_NOTE = """
+You do not see by default: call the look tool when what you are asked needs your eyes, and never talk about what
+you see unless asked."""
 
 
 def load_tools(path):
@@ -64,9 +70,12 @@ LANGS = {"zh": "Always speak Mandarin Chinese (简体中文), whatever language 
 
 
 class Agent(threading.Thread):
-    def __init__(self, robot, url, model, api_key=None, record=True, motion=True, lang="en", think="low", api="openai", tools=None):
+    def __init__(self, robot, url, model, api_key=None, record=True, motion=True, lang="en", think="low", api="openai", tools=None,
+                 look=False, max_says=0):
         super().__init__(daemon=True)
         self.tools = load_tools(tools) if tools and api == "anthropic" else None
+        self.look = look and api == "anthropic"   # the camera frame only through the look tool, not in every turn
+        self.max_says = max_says                  # spoken sentences per turn (0 = no limit; +1 when it used a tool)
         self.robot, self.url, self.model, self.api_key, self.api = robot, url, model, api_key, api
         self.heard, self.on, self.history = queue.Queue(), False, []
         self.idle = threading.Event()             # set between turns (voice.py waits on it)
@@ -117,11 +126,13 @@ class Agent(threading.Thread):
         self._pub(status="thinking", heard=text, thinking="", say="", steps=[])
         self.robot.request("face.set", expression="thinking")
         content = [{"type": "text", "text": f"Heard: {text!r}\nNow: {time.strftime('%Y-%m-%d %a %H:%M')}\nState: {json.dumps(self._state())}"}]
-        if jpeg:
+        if jpeg and not self.look:
             content.append({"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(jpeg).decode()}})
         system = SYSTEM % (", ".join(self._expressions()), ", ".join(gestures.GESTURES), LANGS[self.lang])
-        if self.tools:
-            system += TOOLS_NOTE + ("\n" + self.tools["prompt"] if self.tools.get("prompt") else "")
+        if self.tools or self.look:
+            system += TOOLS_NOTE + (LOOK_NOTE if self.look else "")
+        if self.tools and self.tools.get("prompt"):
+            system += "\n" + self.tools["prompt"]
         messages = [{"role": "system", "content": system}, *self.history[-6:],
                     {"role": "user", "content": content}]
         t0, steps = time.time(), []
@@ -137,16 +148,25 @@ class Agent(threading.Thread):
                     act = json.loads(BARE.sub(r': "\1"\2', raw))
                 except ValueError:
                     return
+            if "say" in act and self.max_says:
+                said[0] += 1
+                if said[0] > self.max_says + (1 if used else 0):    # brief: the rest is not spoken
+                    return
             self._pub(status="acting")
             steps.append(self.step(act, cal))
 
-        used = []
+        used, said = [], [0]
 
         def call_tool(name, args):
             used.append(name)
             self._pub(status=f"tool: {name}")
             rec = {"act": {"tool": name, "input": args}, "ok": True}
             steps.append(rec)
+            if name == "look":
+                frame = self.robot.jpeg
+                if not frame:
+                    return "the camera shows nothing"
+                return [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(frame).decode()}}]
             try:
                 r = subprocess.run(self.tools["command"] + [name], input=json.dumps(args), capture_output=True, text=True, timeout=30)
                 out, rec["ok"] = (r.stdout if r.returncode == 0 else f"error: {r.stderr or r.stdout}").strip(), r.returncode == 0
@@ -154,8 +174,9 @@ class Agent(threading.Thread):
                 out, rec["ok"] = f"error: {e}", False
             return out[:TOOL_OUT]
 
+        defs = (self.tools["defs"] if self.tools else []) + ([LOOK] if self.look else [])
         answer = llm.stream(self.url, self.model, messages, think, line, max_tokens=1200, api_key=self.api_key, think=self.think, api=self.api,
-                            tools=self.tools and self.tools["defs"], call_tool=self.tools and call_tool)
+                            tools=defs or None, call_tool=call_tool if defs else None)
         self._hush()
         if self.tools and self.tools["secret"] & set(used):   # e.g. a verification code: spoken once, never kept
             answer = f"[not kept: it used {', '.join(sorted(self.tools['secret'] & set(used)))}]"
@@ -238,7 +259,7 @@ class Agent(threading.Thread):
                 gestures.play(r, act.get("name", "wave"))
         elif do == "head":
             h = cal.get("head", {})
-            for hid, key, lo, hi in ((1, "yaw", -30, 30), (2, "pitch", -10, 15)):
+            for hid, key, lo, hi in ((1, "yaw", -30, 30), (2, "pitch", h.get("pitch_min", -10), h.get("pitch_max", 15))):
                 if key in act:
                     v = max(lo, min(hi, float(act[key])))
                     r.request("head.move", id=hid, deg=h.get(f"{key}_zero", 0) + h.get(f"{key}_sign", 1) * v, ms=min(ms, 500))

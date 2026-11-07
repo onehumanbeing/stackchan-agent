@@ -1,4 +1,4 @@
-"""Small "talking hands" while the robot speaks: a little arm flick or head nod on the stressed parts of the speech.
+"""Talking motion while the robot speaks: the head nods and sways on the beats of the speech, an arm now and then.
 
 People move their hands and head with what they say; the robot does it from the speech audio itself (loud
 moments = stress), so every sentence gets it without asking the model.  Moves are small and gentle (the
@@ -15,8 +15,10 @@ import time
 
 RATE = 16000
 ARM_DEG = 20                 # arm flick, deg around where the arm is
-NOD_DEG, TILT_DEG = 8, 10    # head nod (pitch) and tilt (yaw), deg
-GAP_S = 0.9                  # at most one move every 0.9 s: calm, not fidgety
+NOD_DEG, SWAY_DEG = 6, 6     # head beat: a nod (pitch) while the head sways to the other side (yaw), deg
+SWAY_MS, NOD_MS, UP_MS = 900, 380, 520   # slow and overlapping: the next beat starts before the sway ends
+GAP_S, FILL_S = 0.6, 1.0     # beats at stresses at least 0.5 s apart, and one at least every 0.9 s while it talks
+ARM_P = 0.3                  # chance that an arm joins a beat
 ARM_SPEED, ARM_ACC = 450, 12  # STS steps/s and ramp: slow and soft (20 deg in about 0.5 s)
 ARMS = {"left": 1, "right": 5}
 
@@ -38,12 +40,13 @@ def stresses(pcm, frame_s=0.05):
 
 
 class Talk:
-    """Plays the moves for one sentence in its own thread; stop() ends it and puts everything back."""
+    """Moves with one sentence in its own thread: on every beat the head nods and sways to the other side together
+    (like a person talking), now and then an arm joins; stop() puts the head back where it was."""
 
     def __init__(self, robot, agent, pcm):
         self.robot, self.agent, self.end = robot, agent, threading.Event()
         self.cal = robot.snapshot().get("calibration", {})
-        self.times = stresses(pcm)
+        self.times, self.dur = stresses(pcm), len(pcm) / (2 * RATE)
         self.rng = random.Random(len(pcm))
         self.thread = threading.Thread(target=self._run, daemon=True)
 
@@ -54,7 +57,8 @@ class Talk:
 
     def more(self, pcm, offset_s):
         """More audio of the same sentence (streamed TTS), starting offset_s into it."""
-        self.times += [offset_s + t for t in stresses(pcm) if not self.times or offset_s + t - self.times[-1] >= GAP_S]
+        self.times += [offset_s + t for t in stresses(pcm)]
+        self.dur = offset_s + len(pcm) / (2 * RATE)
 
     def stop(self):
         self.end.set()
@@ -63,44 +67,59 @@ class Talk:
     def _free(self):
         return time.monotonic() > getattr(self.agent, "motion_until", 0)
 
-    def _run(self):
-        moves = ["left", "nod", "right", "tilt"]
-        k = 0
-        while not self.end.is_set():
-            if k >= len(self.times):             # streamed audio may still add stresses
-                self.end.wait(0.1)
-                continue
-            t, k = self.times[k], k + 1
-            if self.end.wait(max(0.0, self.t0 + t - 0.2 - time.monotonic())):
-                return
-            if not self._free():
-                continue
-            move = moves[k % 4] if self.rng.random() < 0.7 else self.rng.choice(moves)
-            print(json.dumps({"talk": move, "t": round(t, 2)}), file=sys.stderr, flush=True)
-            try:
-                self._flick(move)
-            except (RuntimeError, TimeoutError):
-                pass
+    def _beat_after(self, last):
+        """When the next beat is: the next stress, or FILL_S after the last one; None while no audio is that far yet."""
+        t = next((t for t in self.times if t >= last + GAP_S), None)
+        t = last + FILL_S if t is None or t > last + FILL_S else t
+        return t if t < self.dur - 0.3 else None
 
-    def _flick(self, move):
-        r, h, snap = self.robot, self.cal.get("head", {}), self.robot.snapshot()   # where it is now: the base
-        if move in ARMS:
-            sid = ARMS[move]
-            base = snap.get("servos", {}).get(str(sid), {}).get("deg")
-            j = self.cal.get("joints", {}).get(str(sid))
-            if base is None or not j:
-                return
-            up, raised = j.get("up", 1), (base - j["zero"]) * j.get("up", 1)
-            d = ARM_DEG if raised + ARM_DEG <= 100 else -ARM_DEG      # up a little, or down if it is already high
-            r.request("servo.move", id=sid, deg=base + up * d, speed=ARM_SPEED, acc=ARM_ACC)
-            self.end.wait(0.5)
-            r.request("servo.move", id=sid, deg=base, speed=ARM_SPEED, acc=ARM_ACC)
-        else:
-            key, hid = ("pitch", 2) if move == "nod" else ("yaw", 1)
-            base = snap.get("head", {}).get(key)
-            if base is None:
-                return
-            off = -NOD_DEG if move == "nod" else self.rng.choice((-1, 1)) * TILT_DEG
-            r.request("head.move", id=hid, deg=base + h.get(f"{key}_sign", 1) * off, ms=350)
-            self.end.wait(0.45)
-            r.request("head.move", id=hid, deg=base, ms=450)
+    def _run(self):
+        h = self.cal.get("head", {})
+        head = self.robot.snapshot().get("head", {})
+        yaw0, pitch0 = head.get("yaw"), head.get("pitch")
+        if yaw0 is None or pitch0 is None:
+            return
+        ys, ps = h.get("yaw_sign", 1), h.get("pitch_sign", 1)
+        if "pitch_zero" in h:                    # never below the lowest pitch (calibration pitch_min, deg from home)
+            pitch0 = h["pitch_zero"] + ps * max((pitch0 - h["pitch_zero"]) * ps, h.get("pitch_min", -10))
+        side, last, moved = self.rng.choice((-1, 1)), -GAP_S, False
+        try:
+            while not self.end.is_set():
+                t = self._beat_after(last)
+                if t is None:                    # streamed audio still coming (or the sentence is ending)
+                    self.end.wait(0.1)
+                    continue
+                if self.end.wait(max(0.0, self.t0 + t - 0.15 - time.monotonic())):
+                    return
+                last = t
+                if not self._free():             # the model's own move runs
+                    continue
+                print(json.dumps({"talk": "beat", "t": round(t, 2)}), file=sys.stderr, flush=True)
+                yaw = yaw0 + ys * side * SWAY_DEG * self.rng.uniform(0.5, 1.0)
+                side, moved = -side, True
+                self.robot.fire("head.move", id=1, deg=yaw, ms=SWAY_MS)          # sway and nod at once
+                self.robot.fire("head.move", id=2, deg=pitch0 + ps * NOD_DEG * self.rng.uniform(0.6, 1.0), ms=NOD_MS)   # up, then back down: a nod from the lowest pose
+                if self.rng.random() < ARM_P:
+                    threading.Thread(target=self._arm, args=(self.rng.choice(list(ARMS)),), daemon=True).start()
+                if self.end.wait(NOD_MS / 1000):
+                    return
+                self.robot.fire("head.move", id=2, deg=pitch0, ms=UP_MS)
+        finally:
+            if moved:
+                self.robot.fire("head.move", id=1, deg=yaw0, ms=700)
+                self.robot.fire("head.move", id=2, deg=pitch0, ms=600)
+
+    def _arm(self, side):
+        sid, snap = ARMS[side], self.robot.snapshot()
+        base = snap.get("servos", {}).get(str(sid), {}).get("deg")
+        j = self.cal.get("joints", {}).get(str(sid))
+        if base is None or not j:
+            return
+        up, raised = j.get("up", 1), (base - j["zero"]) * j.get("up", 1)
+        d = ARM_DEG if raised + ARM_DEG <= 100 else -ARM_DEG      # up a little, or down if it is already high
+        try:
+            self.robot.request("servo.move", id=sid, deg=base + up * d, speed=ARM_SPEED, acc=ARM_ACC)
+            time.sleep(0.5)
+            self.robot.request("servo.move", id=sid, deg=base, speed=ARM_SPEED, acc=ARM_ACC)
+        except (RuntimeError, TimeoutError):
+            pass

@@ -221,6 +221,10 @@ def main(argv=None):
                    help="CosyVoice 2 server (cosyvoice_server.py), e.g. http://127.0.0.1:50021/tts; local TTS when unreachable")
     p.add_argument("--tools", default=os.environ.get("STACKCHAN_TOOLS"),
                    help="JSON file of tools the agent may call (Anthropic API only; see agent.py load_tools)")
+    p.add_argument("--look", action="store_true",
+                   help="Anthropic API: the camera frame only when the model asks for it (a look tool), not in every turn")
+    p.add_argument("--volume", type=int, help="speaker volume 0..255 (the firmware starts at 180)")
+    p.add_argument("--max-says", type=int, default=0, help="at most this many spoken sentences per turn (0 = no limit)")
     p.add_argument("--follow-s", type=float, default=8,
                    help="after an answer, listen this long without the wake word (0 = always say the wake word first)")
     p.add_argument("--llm-think", choices=["low", "high", "off"], default="low",
@@ -272,7 +276,7 @@ def main(argv=None):
         from dashboard import serve
         llm = a.llm_url and {"url": a.llm_url, "model": a.llm_model, "api_key": os.environ.get("STACKCHAN_LLM_KEY"),
                              "on": a.agent, "record": not a.no_record, "motion": not a.no_motion,
-                             "whisper_model": a.whisper_model, "tts_voice": a.tts_voice, "lang": a.lang, "think": a.llm_think, "api": a.llm_api, "follow_s": a.follow_s, "tts_url": a.tts_url, "tools": a.tools}
+                             "whisper_model": a.whisper_model, "tts_voice": a.tts_voice, "lang": a.lang, "think": a.llm_think, "api": a.llm_api, "follow_s": a.follow_s, "tts_url": a.tts_url, "tools": a.tools, "look": a.look, "max_says": a.max_says, "volume": a.volume}
         serve(a.host or DEFAULT_HOST, parse_ids(a.ids) if a.ids else None, a.hz, a.fps, a.listen, a.http_port, llm, a.qr)
         return 0
     try:

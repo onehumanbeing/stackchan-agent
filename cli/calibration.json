@@ -38,7 +38,9 @@
     "yaw_zero": -16.1,
     "yaw_sign": 1,
     "pitch_zero": 23.4,
-    "pitch_sign": 1
+    "pitch_sign": 1,
+    "pitch_min": 0,
+    "pitch_max": 15
   },
   "body": "simple"
 }
