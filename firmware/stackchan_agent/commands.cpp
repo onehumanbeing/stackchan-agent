@@ -1,12 +1,14 @@
 #include "commands.h"
 
 #include <ArduinoJson.h>
+#include <M5Unified.h>
 #include <WiFi.h>
 #include <mbedtls/base64.h>
 
 #include "audio.h"
 #include "camera.h"
 #include "dance.h"
+#include "diag.h"
 #include "face.h"
 #include "net.h"
 #include "settings.h"
@@ -20,6 +22,22 @@ sts::Bus bus;
 // Same packets as STS, but registers are big endian and positions are 0..1023 over 300 degrees.
 sts::Bus head(Serial2);
 constexpr int HEAD_RX = 7, HEAD_TX = 6;
+// The body switches the head servos' supply through a PY32 IO expander (internal I2C 0x6F, pin 0 = VM_EN). The stock
+// firmware turns it on at boot; without it the head is limp after a full power-off.
+constexpr uint8_t PY32 = 0x6F, PY32_VERSION = 0x02, PY32_DIR = 0x03, PY32_OUT = 0x05, PY32_PU = 0x09, PY32_PD = 0x0B, VM_EN = 1;
+constexpr uint32_t PY32_HZ = 100000;
+
+uint32_t head_moved_at = 0;
+bool head_tight = true;   // servos power up holding: relax them too (at boot and after head.power)
+
+bool headPower(bool on) {
+  uint8_t v = M5.In_I2C.readRegister8(PY32, PY32_VERSION, PY32_HZ);
+  if (v == 0 || v == 0xFF) return false;       // no StackChan body
+  M5.In_I2C.bitOn(PY32, PY32_DIR, VM_EN, PY32_HZ);
+  M5.In_I2C.bitOff(PY32, PY32_PD, VM_EN, PY32_HZ);
+  M5.In_I2C.bitOn(PY32, PY32_PU, VM_EN, PY32_HZ);
+  return on ? M5.In_I2C.bitOn(PY32, PY32_OUT, VM_EN, PY32_HZ) : M5.In_I2C.bitOff(PY32, PY32_OUT, VM_EN, PY32_HZ);
+}
 
 struct Pins { int rx, tx; const char *port; };
 constexpr Pins CANDIDATES[] = {   // CoreS3 Grove ports, both TX/RX orders
@@ -93,11 +111,14 @@ int goal(JsonVariantConst a, int id, bool &clamped) {
 
 void sysInfo(JsonObject r) {
   r["fw"] = FW_VERSION, r["mac"] = WiFi.macAddress(), r["uptime_s"] = millis() / 1000, r["heap"] = ESP.getFreeHeap();
+  r["reset"]["reason"] = diag::resetReason(), r["reset"]["stage"] = diag::lastStage();   // where a hang was
   JsonObject w = r["wifi"].to<JsonObject>();
   w["connected"] = net::connected(), w["ssid"] = net::ssid(), w["ip"] = net::ip(), w["rssi"] = net::rssi();
   JsonObject b = r["bus"].to<JsonObject>();
   b["ok"] = bus.ok(), b["port"] = bus_port, b["rx"] = bus.rx(), b["tx"] = bus.tx(), b["baud"] = bus.baud();
   b["errors"] = bus.errors();
+  JsonObject hp = r["head_power"].to<JsonObject>();
+  hp["py32"] = M5.In_I2C.readRegister8(PY32, PY32_VERSION, PY32_HZ), hp["out"] = M5.In_I2C.readRegister8(PY32, PY32_OUT, PY32_HZ);
   r["face"] = face::expression(), r["face_style"] = face::style(), r["camera"] = camera::ok();
 }
 
@@ -203,6 +224,11 @@ const char *run(int ch, const String &cmd, JsonVariantConst a, JsonObject r) {
   if (cmd == "speaker.stop") { audio::stop(); return nullptr; }
   if (cmd == "speaker.volume") { audio::setVolume(a["volume"] | 180); return nullptr; }
   if (cmd == "speaker.status") { r["playing"] = audio::playing(); r["mic"] = audio::micClient() >= 0; return nullptr; }
+  if (cmd == "head.power") {   // {"on": false} = limp head
+    r["ok"] = headPower(a["on"] | true);
+    head_moved_at = millis(), head_tight = true;
+    return nullptr;
+  }   // {"on": false} = limp head
   if (cmd == "head.read") {   // raw 0..1023, deg = (raw - 512) * 300 / 1024
     JsonArray out = r["servos"].to<JsonArray>();
     for (int hid = 1; hid <= 2; hid++) {
@@ -212,6 +238,14 @@ const char *run(int ch, const String &cmd, JsonVariantConst a, JsonObject r) {
       JsonObject o = out.add<JsonObject>();
       o["id"] = hid, o["raw"] = raw, o["deg"] = roundf((raw - 512) * 3000.0f / 1024) / 10;
     }
+    return nullptr;
+  }
+  if (cmd == "head.regs") {   // {"id": 1|2, "addr": A, "n": N <= 16}: raw SCS registers, to see why a head servo does not move
+    int hid = a["id"] | 1, addr = a["addr"] | 0, n = constrain(a["n"] | 16, 1, 16);
+    uint8_t b[16];
+    if (!head.read(hid, addr, b, n)) return "no reply";
+    JsonArray o = r["regs"].to<JsonArray>();
+    for (int i = 0; i < n; i++) o.add(b[i]);
     return nullptr;
   }
   if (cmd == "head.move") {   // id (1 yaw, 2 pitch), raw (0..1023) or deg, ms (travel time)
@@ -308,8 +342,20 @@ const char *run(int ch, const String &cmd, JsonVariantConst a, JsonObject r) {
 }
 }  // namespace
 
+// Holding a pose, the head servos hum. They hold it by friction, so relax them HEAD_RELAX_MS after the last move;
+// the next move turns torque back on.
+constexpr uint32_t HEAD_RELAX_MS = 3000;
+
+void relaxHeadWhenIdle() {
+  // signed: head_moved_at is when the move ends, in the future while it runs
+  if (!head_tight || (int32_t)(millis() - head_moved_at) < (int32_t)HEAD_RELAX_MS) return;
+  for (int hid = 1; hid <= 2; hid++) head.write8(hid, sts::TORQUE_ENABLE, 0);
+  head_tight = false;
+}
+
 bool moveHead(int hid, int raw, int ms) {
   raw = constrain(raw, 0, 1023);
+  head_moved_at = millis() + ms, head_tight = true;
   uint8_t d[6] = {(uint8_t)(raw >> 8), (uint8_t)raw, (uint8_t)(ms >> 8), (uint8_t)ms, 0, 0};
   return head.write8(hid, sts::TORQUE_ENABLE, 1) && head.write(hid, sts::GOAL_POS, d, 6);
 }
@@ -326,6 +372,8 @@ void moveArms(const uint8_t *ids, const int *raws, int n, int speed, int acc) {
 
 void begin() {
   bool ok = detectBus();
+  headPower(true);
+  delay(200);                                  // let the servos boot before the first read
   head.begin(HEAD_RX, HEAD_TX, 1000000, 2);
   face::say(ok ? String("bus ") + bus_port + " ok" : "bus not found", 4000);
 }
@@ -384,6 +432,7 @@ void micLoop() {
 }
 
 void loop() {
+  relaxHeadWhenIdle();
   cameraLoop();
   micLoop();
   for (int ch = USB; ch < net::MAX_CLIENTS; ch++) {
