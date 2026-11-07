@@ -26,6 +26,9 @@ constexpr int HEAD_RX = 7, HEAD_TX = 6;
 constexpr uint8_t PY32 = 0x6F, PY32_VERSION = 0x02, PY32_DIR = 0x03, PY32_OUT = 0x05, PY32_PU = 0x09, PY32_PD = 0x0B, VM_EN = 1;
 constexpr uint32_t PY32_HZ = 100000;
 
+uint32_t head_moved_at = 0;
+bool head_tight = true;   // servos power up holding: relax them too (at boot and after head.power)
+
 bool headPower(bool on) {
   uint8_t v = M5.In_I2C.readRegister8(PY32, PY32_VERSION, PY32_HZ);
   if (v == 0 || v == 0xFF) return false;       // no StackChan body
@@ -219,7 +222,11 @@ const char *run(int ch, const String &cmd, JsonVariantConst a, JsonObject r) {
   if (cmd == "speaker.stop") { audio::stop(); return nullptr; }
   if (cmd == "speaker.volume") { audio::setVolume(a["volume"] | 180); return nullptr; }
   if (cmd == "speaker.status") { r["playing"] = audio::playing(); r["mic"] = audio::micClient() >= 0; return nullptr; }
-  if (cmd == "head.power") { r["ok"] = headPower(a["on"] | true); return nullptr; }   // {"on": false} = limp head
+  if (cmd == "head.power") {   // {"on": false} = limp head
+    r["ok"] = headPower(a["on"] | true);
+    head_moved_at = millis(), head_tight = true;
+    return nullptr;
+  }   // {"on": false} = limp head
   if (cmd == "head.read") {   // raw 0..1023, deg = (raw - 512) * 300 / 1024
     JsonArray out = r["servos"].to<JsonArray>();
     for (int hid = 1; hid <= 2; hid++) {
@@ -229,6 +236,14 @@ const char *run(int ch, const String &cmd, JsonVariantConst a, JsonObject r) {
       JsonObject o = out.add<JsonObject>();
       o["id"] = hid, o["raw"] = raw, o["deg"] = roundf((raw - 512) * 3000.0f / 1024) / 10;
     }
+    return nullptr;
+  }
+  if (cmd == "head.regs") {   // {"id": 1|2, "addr": A, "n": N <= 16}: raw SCS registers, to see why a head servo does not move
+    int hid = a["id"] | 1, addr = a["addr"] | 0, n = constrain(a["n"] | 16, 1, 16);
+    uint8_t b[16];
+    if (!head.read(hid, addr, b, n)) return "no reply";
+    JsonArray o = r["regs"].to<JsonArray>();
+    for (int i = 0; i < n; i++) o.add(b[i]);
     return nullptr;
   }
   if (cmd == "head.move") {   // id (1 yaw, 2 pitch), raw (0..1023) or deg, ms (travel time)
@@ -328,11 +343,10 @@ const char *run(int ch, const String &cmd, JsonVariantConst a, JsonObject r) {
 // Holding a pose, the head servos hum. They hold it by friction, so relax them HEAD_RELAX_MS after the last move;
 // the next move turns torque back on.
 constexpr uint32_t HEAD_RELAX_MS = 3000;
-uint32_t head_moved_at = 0;
-bool head_tight = false;
 
 void relaxHeadWhenIdle() {
-  if (!head_tight || millis() - head_moved_at < HEAD_RELAX_MS) return;
+  // signed: head_moved_at is when the move ends, in the future while it runs
+  if (!head_tight || (int32_t)(millis() - head_moved_at) < (int32_t)HEAD_RELAX_MS) return;
   for (int hid = 1; hid <= 2; hid++) head.write8(hid, sts::TORQUE_ENABLE, 0);
   head_tight = false;
 }
