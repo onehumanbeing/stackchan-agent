@@ -4,8 +4,8 @@ Mic audio arrives as 16 kHz int16 chunks (robot.on_audio).  An energy VAD cuts i
 whisper.cpp (whisper-server, started here, local) transcribes them.  While idle, an utterance that
 starts with the wake phrase ("Hey Buddy") wakes the robot: it answers "Listening", looks up and, when it has
 nothing else to do, lifts its head a little and drops its arms to home (at attention) until the command is in.  The next utterance goes to the agent.
-Replies are spoken with a local TTS (Kokoro, else macOS `say`) and
-streamed to the robot's speaker; the mic is off while it speaks (the board is half duplex).
+Replies are spoken with a CosyVoice 2 server when --tts-url is given (streamed: it starts talking on the first
+chunk), else a local TTS (Kokoro, else macOS `say`), and streamed to the robot's speaker; the mic is off while it speaks (the board is half duplex).
 """
 import array
 import io
@@ -32,6 +32,7 @@ PREROLL_S = 0.4              # audio kept from before the level rises, so soft s
 # No whisper --prompt: with "Hey Buddy" as a prompt it hears "Buddy." in silence and servo noise.
 HEARD = {"zh": "我在听", "en": "Listening"}
 LIFT_DEG = 8
+END_S = 0.5                  # silence that ends a command
 WAKE_S, FOLLOW_S = 10, 8     # how long it waits for a command after the wake word / after answering
 
 
@@ -99,6 +100,34 @@ class Kokoro:
         return (np.clip(out, -1, 1) * 32767).astype("<i2").tobytes()
 
 
+class CosyVoice:
+    """CosyVoice 2 server (cosyvoice_server.py, e.g. on a GPU box behind an ssh tunnel): POST {"text"} -> 16 kHz int16
+    PCM, chunked as it is synthesized.  When it is unreachable the local TTS speaks instead."""
+
+    def __init__(self, url, fallback):
+        self.url, self.fallback = url, fallback
+
+    def stream(self, text):
+        try:
+            r = NO_PROXY.open(urllib.request.Request(self.url, json.dumps({"text": text}).encode(), {"Content-Type": "application/json"}), timeout=10)
+        except OSError as e:
+            print(json.dumps({"tts": f"cosyvoice unreachable ({e}), local TTS"}), file=sys.stderr, flush=True)
+            yield self.fallback(text)
+            return
+        buf = b""
+        while chunk := r.read1(65536):
+            buf += chunk
+            if len(buf) >= RATE:                 # half a second at a time, an even number of bytes
+                n = len(buf) & ~1
+                yield buf[:n]
+                buf = buf[n:]
+        if buf:
+            yield buf
+
+    def pcm(self, text):
+        return b"".join(self.stream(text))
+
+
 def make_tts(voice):
     """Kokoro when its model files are present, else macOS `say`."""
     if (KOKORO_DIR / "kokoro-v1.0.onnx").exists():
@@ -119,16 +148,20 @@ def say_pcm(text, voice="Samantha"):
 
 
 class Voice(threading.Thread):
-    def __init__(self, robot, agent, whisper_model, tts_voice=None, wake=WAKE):
+    def __init__(self, robot, agent, whisper_model, tts_voice=None, wake=WAKE, follow_s=FOLLOW_S, tts_url=None):
         super().__init__(daemon=True)
-        self.robot, self.agent, self.wake = robot, agent, wake
+        self.robot, self.agent, self.wake, self.follow_s = robot, agent, wake, follow_s
         self.tts = make_tts(tts_voice)
+        self.tts_stream = lambda text: iter([self.tts(text)])
+        if tts_url:
+            cosy = CosyVoice(tts_url, self.tts)
+            self.tts, self.tts_stream = cosy.pcm, cosy.stream
         self.cache = {}                          # wake replies, rendered once: TTS takes about a second
         threading.Thread(target=lambda: [self._pcm(t) for t in HEARD.values()], daemon=True).start()
         self.stt = Whisper(whisper_model)
         self.mode = "idle"                       # idle (wake word) | listening (command) | busy
         self.buf, self.speech, self.silence, self.floor = bytearray(), False, 0.0, 200.0
-        self.utterances, self.lifted, self.deaf_until, self.pre = [], None, 0.0, b""     # pitch to go back to after a wake-up lift
+        self.utterances, self.lifted, self.deaf_until, self.pre, self.spoke_at = [], None, 0.0, b"", None     # pitch to go back to after a wake-up lift
         self.arms_before = None                  # {id: deg} before the wake word sent the arms home
         self.lock = threading.Condition()
         robot.on_audio = self.feed
@@ -150,13 +183,13 @@ class Voice(threading.Thread):
         self.buf += pcm
         self.silence = 0.0 if loud else self.silence + CHUNK_S
         seconds = len(self.buf) / (2 * RATE)
-        end = 0.5 if self.mode == "idle" else 0.8     # the wake phrase is short: answer it sooner
+        end = 0.5 if self.mode == "idle" else END_S    # the wake phrase is short: answer it sooner
         if self.silence >= end or seconds > 12:
             self.speech = False
             sound = seconds - PREROLL_S - self.silence
             if sound >= (0.3 if self.mode == "idle" else 0.15):   # actual sound; a one-word command ("Dance") is short
                 with self.lock:
-                    self.utterances.append(bytes(self.buf))
+                    self.utterances.append((bytes(self.buf), time.monotonic() - self.silence))   # + when the speech ended
                     self.lock.notify()
 
     def _mic(self, on):
@@ -168,14 +201,24 @@ class Voice(threading.Thread):
     # --- speaker side ---------------------------------------------------------------------------
     def say(self, text):
         self.robot.request("face.set", say=text, ms=4000)
-        pcm = self._pcm(text) if text in HEARD.values() else self.tts(text)
+        chunks = iter([self._pcm(text)]) if text in HEARD.values() else self.tts_stream(text)
         prev, self.mode = self.mode, "busy"
+        pcm = next(chunks, b"")
+        started = time.monotonic()
+        if self.spoke_at and text not in HEARD.values():    # how long the person waited for the answer
+            self._log(f"first sound {started - self.spoke_at:.2f} s after the speech ended")
+            self.spoke_at = None
         self.robot.send_audio(pcm)
         self.robot.request("face.set", mouth=0.7)          # the eyes bob while it talks
         talk = None
         if self.agent.motion and text not in HEARD.values():   # small talking hands / nods (talk_motion.py)
             talk = Talk(self.robot, self.agent, pcm).start()
-        time.sleep(len(pcm) / (2 * RATE) + 0.3)
+        for more in chunks:                      # the rest as it is synthesized
+            self.robot.send_audio(more)
+            if talk:
+                talk.more(more, len(pcm) / (2 * RATE))
+            pcm += more
+        time.sleep(max(0.0, started + len(pcm) / (2 * RATE) + 0.3 - time.monotonic()))
         for _ in range(30):                      # until the robot's queue is empty
             if not self.robot.request("speaker.status").get("playing"):
                 break
@@ -196,40 +239,51 @@ class Voice(threading.Thread):
                     if not self.lock.wait(timeout=2):
                         self._keep_mic()
                         self._give_up()
-                pcm = self.utterances.pop(0)
-            if not self.agent.on:
-                continue
-            t0 = time.monotonic()
-            text = self.stt.transcribe(pcm, self.agent.lang)
-            print(json.dumps({"at": time.strftime("%H:%M:%S"), "voice": self.mode, "heard": text, "audio_s": round(len(pcm) / (2 * RATE), 2),
-                              "stt_s": round(time.monotonic() - t0, 2)}, ensure_ascii=False), file=sys.stderr, flush=True)
-            if not text or text.strip()[:1] in ("[", "(", "*", "-"):  # [BLANK_AUDIO], (music), *cough*, "-": not speech
-                continue
-            if self.mode == "idle":
-                m = self.wake.search(text)
-                if not m:
-                    continue
-                self.agent._pub(heard=text)          # only what it reacts to, not every noise
-                rest = text[m.end():].strip(" ,.!?")
-                self._wake()
-                if not wordy(rest):
-                    continue
-                text = rest
-            elif self.wake.match(text.strip()) and not wordy(text[self.wake.match(text.strip()).end():]):
-                self._wake()                         # just the wake word again: answer again, wait for the command
-                continue
-            elif not wordy(text):
-                continue
-            self._unlift()
-            self.arms_before = None                  # a command came: the arms stay where it leaves them
-            self.mode = "busy"
-            if MUSIC.search(text):                   # "Hey Buddy, music!": the default dance, no model involved
-                self._dance(text)
-            else:
-                self.agent.hear(text)
-                self.agent.idle.wait(60)
-            self._mic(True)
-            self._listen(FOLLOW_S)                   # a conversation: the next sentence needs no wake word
+                pcm, self.spoke_at = self.utterances.pop(0)
+            try:
+                self._handle(pcm)
+            except (RuntimeError, TimeoutError, OSError) as e:   # a dropped robot link: keep listening
+                self._log(f"error: {e}")
+                self.mode = "idle"
+
+    def _handle(self, pcm):
+        if not self.agent.on:
+            return
+        t0 = time.monotonic()
+        text = self.stt.transcribe(pcm, self.agent.lang)
+        print(json.dumps({"at": time.strftime("%H:%M:%S"), "voice": self.mode, "heard": text, "audio_s": round(len(pcm) / (2 * RATE), 2),
+                          "stt_s": round(time.monotonic() - t0, 2)}, ensure_ascii=False), file=sys.stderr, flush=True)
+        if not text or text.strip()[:1] in ("[", "(", "*", "-"):  # [BLANK_AUDIO], (music), *cough*, "-": not speech
+            return
+        if self.mode == "idle":
+            m = self.wake.search(text)
+            if not m:
+                return
+            self.agent._pub(heard=text)          # only what it reacts to, not every noise
+            rest = text[m.end():].strip(" ,.!?")
+            self._wake()
+            if not wordy(rest):
+                return
+            text = rest
+        elif self.wake.match(text.strip()) and not wordy(text[self.wake.match(text.strip()).end():]):
+            self._wake()                         # just the wake word again: answer again, wait for the command
+            return
+        elif not wordy(text):
+            return
+        self._unlift()
+        self.arms_before = None                  # a command came: the arms stay where it leaves them
+        self.mode = "busy"
+        if MUSIC.search(text):                   # "Hey Buddy, music!": the default dance, no model involved
+            self._dance(text)
+        else:
+            self.agent.hear(text)
+            self.agent.idle.wait(60)
+        self._mic(True)
+        if self.follow_s:
+            self._listen(self.follow_s)          # a conversation: the next sentence needs no wake word
+        else:
+            self.mode = "idle"                   # every command needs the wake word again
+            self.agent._pub(status="idle")
 
     def _wake(self):
         self.mode = "listening"

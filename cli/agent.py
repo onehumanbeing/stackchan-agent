@@ -8,11 +8,13 @@ The model answers one JSON object per line, and each line runs as soon as it arr
   {"do": "arm", "side": "left", "deg": 30, "ms": 400}  0 = home, up to 100 toward the middle of travel
   {"do": "wait", "s": 1}
 A head / arm step takes `ms` (150..1500, default about one second), so the model can compose its own moves.  State for the live page is published through robot._set().
+With --tools (Anthropic API) the model can also call tools, e.g. to look things up; see load_tools.
 """
 import base64
 import json
 import queue
 import re
+import subprocess
 import threading
 import time
 
@@ -36,16 +38,36 @@ head and arm steps take "ms": 150..1500 (how long the move takes; short = quick)
 Decide the movement yourself from what you hear and see.  If no gesture fits, compose it from head / arm steps,
 and do exactly what is asked (e.g. "shake your head twice" = yaw 20, -20, 20, -20, 0 with ms 250).
 End facing ahead; your arms go back to rest by themselves.
-Talk while you move, like a person: a short "say" (one sentence), then the moves that go with it (they run while that
-sentence is spoken), then the next "say" and its moves.  1..3 sentences, at most 10 steps in all.  Think briefly. %s"""
+Talk while you move, like a person: start with a short "say" (one sentence: people wait for your voice), then the
+moves that go with it (they run while that sentence is spoken), then the next "say" and its moves.  1..3 sentences,
+at most 10 steps in all.  Think briefly. %s"""
+TOOLS_NOTE = """
+You have tools.  Everything you write is still JSON lines, also around tool calls: before a call, one short
+{"say": ...} (e.g. "Let me check"), no other text; after it, the answer in one or two short sentences, with no lists,
+links or ids, which are hard to listen to."""
+TOOL_OUT = 6000              # characters of a tool's output the model sees
+
+
+def load_tools(path):
+    """A tools file: {"command": [argv...], "tools": [{"name", "description", "input_schema", "secret"?}], "prompt"?}.
+    A call runs `command + [name]` with the input as JSON on stdin; its stdout is the result.  "secret": true (e.g. a
+    verification code) keeps that turn's answer out of the episode log and the conversation history; "prompt" is
+    added to the system prompt."""
+    spec = json.loads(open(path).read())
+    spec["defs"] = [{k: t[k] for k in ("name", "description", "input_schema")} for t in spec["tools"]]
+    spec["secret"] = {t["name"] for t in spec["tools"] if t.get("secret")}
+    return spec
+
+
 FACES = ["neutral", "happy", "sad", "angry", "doubt", "sleepy", "surprised"]   # older firmware
 LANGS = {"zh": "Always speak Mandarin Chinese (简体中文), whatever language you hear.", "en": "Always speak English."}
 
 
 class Agent(threading.Thread):
-    def __init__(self, robot, url, model, api_key=None, record=True, motion=True, lang="en", think="low"):
+    def __init__(self, robot, url, model, api_key=None, record=True, motion=True, lang="en", think="low", api="openai", tools=None):
         super().__init__(daemon=True)
-        self.robot, self.url, self.model, self.api_key = robot, url, model, api_key
+        self.tools = load_tools(tools) if tools and api == "anthropic" else None
+        self.robot, self.url, self.model, self.api_key, self.api = robot, url, model, api_key, api
         self.heard, self.on, self.history = queue.Queue(), False, []
         self.idle = threading.Event()             # set between turns (voice.py waits on it)
         self.idle.set()
@@ -94,10 +116,12 @@ class Agent(threading.Thread):
         jpeg = self.robot.jpeg
         self._pub(status="thinking", heard=text, thinking="", say="", steps=[])
         self.robot.request("face.set", expression="thinking")
-        content = [{"type": "text", "text": f"Heard: {text!r}\nState: {json.dumps(self._state())}"}]
+        content = [{"type": "text", "text": f"Heard: {text!r}\nNow: {time.strftime('%Y-%m-%d %a %H:%M')}\nState: {json.dumps(self._state())}"}]
         if jpeg:
             content.append({"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(jpeg).decode()}})
         system = SYSTEM % (", ".join(self._expressions()), ", ".join(gestures.GESTURES), LANGS[self.lang])
+        if self.tools:
+            system += TOOLS_NOTE + ("\n" + self.tools["prompt"] if self.tools.get("prompt") else "")
         messages = [{"role": "system", "content": system}, *self.history[-6:],
                     {"role": "user", "content": content}]
         t0, steps = time.time(), []
@@ -116,8 +140,27 @@ class Agent(threading.Thread):
             self._pub(status="acting")
             steps.append(self.step(act, cal))
 
-        answer = llm.stream(self.url, self.model, messages, think, line, max_tokens=1200, api_key=self.api_key, think=self.think)
+        used = []
+
+        def call_tool(name, args):
+            used.append(name)
+            self._pub(status=f"tool: {name}")
+            rec = {"act": {"tool": name, "input": args}, "ok": True}
+            steps.append(rec)
+            try:
+                r = subprocess.run(self.tools["command"] + [name], input=json.dumps(args), capture_output=True, text=True, timeout=30)
+                out, rec["ok"] = (r.stdout if r.returncode == 0 else f"error: {r.stderr or r.stdout}").strip(), r.returncode == 0
+            except (OSError, subprocess.TimeoutExpired) as e:
+                out, rec["ok"] = f"error: {e}", False
+            return out[:TOOL_OUT]
+
+        answer = llm.stream(self.url, self.model, messages, think, line, max_tokens=1200, api_key=self.api_key, think=self.think, api=self.api,
+                            tools=self.tools and self.tools["defs"], call_tool=self.tools and call_tool)
         self._hush()
+        if self.tools and self.tools["secret"] & set(used):   # e.g. a verification code: spoken once, never kept
+            answer = f"[not kept: it used {', '.join(sorted(self.tools['secret'] & set(used)))}]"
+            for rec in steps:
+                rec["act"] = {"redacted": True} if "say" in rec["act"] or "tool" in rec["act"] else rec["act"]
         self.history += [{"role": "user", "content": f"Heard: {text!r}"}, {"role": "assistant", "content": answer}]
         self.journal.write({"heard": text, "thinking": self.view["thinking"], "answer": answer, "steps": steps,
                             "state": self._state(), "seconds": round(time.time() - t0, 2)}, jpeg)

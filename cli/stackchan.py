@@ -208,6 +208,8 @@ def main(argv=None):
     p.add_argument("--llm-url", default=os.environ.get("STACKCHAN_LLM_URL"),
                    help="OpenAI-compatible endpoint (e.g. http://localhost:8000/v1): enables the agent")
     p.add_argument("--llm-model", default=os.environ.get("STACKCHAN_LLM_MODEL", "default"))
+    p.add_argument("--llm-api", choices=["openai", "anthropic"], default=os.environ.get("STACKCHAN_LLM_API", "openai"),
+                   help="openai: /chat/completions; anthropic: Claude /v1/messages (--llm-url without /v1, key in STACKCHAN_LLM_KEY)")
     p.add_argument("--agent", action="store_true", help="start with the agent switched on")
     p.add_argument("--no-record", action="store_true", help="do not write episodes to ~/.stackchan/episodes")
     p.add_argument("--no-motion", action="store_true", help="agent thinks and changes faces but never moves a servo (except a small head lift on wake-up)")
@@ -215,6 +217,12 @@ def main(argv=None):
                    help="whisper.cpp ggml model: enables voice (wake word 'Hey Buddy', robot mic + speaker)")
     p.add_argument("--tts-voice", default=os.environ.get("STACKCHAN_TTS_VOICE"),
                    help="Kokoro voice (default af_heart / zf_xiaoxiao by language) or a macOS `say` voice")
+    p.add_argument("--tts-url", default=os.environ.get("STACKCHAN_TTS_URL"),
+                   help="CosyVoice 2 server (cosyvoice_server.py), e.g. http://127.0.0.1:50021/tts; local TTS when unreachable")
+    p.add_argument("--tools", default=os.environ.get("STACKCHAN_TOOLS"),
+                   help="JSON file of tools the agent may call (Anthropic API only; see agent.py load_tools)")
+    p.add_argument("--follow-s", type=float, default=8,
+                   help="after an answer, listen this long without the wake word (0 = always say the wake word first)")
     p.add_argument("--llm-think", choices=["low", "high", "off"], default="low",
                    help="how much the model reasons before acting: low (fast, default), high, off (fastest)")
     p.add_argument("--lang", choices=["zh", "en"], default=os.environ.get("STACKCHAN_LANG", "en"),
@@ -264,7 +272,7 @@ def main(argv=None):
         from dashboard import serve
         llm = a.llm_url and {"url": a.llm_url, "model": a.llm_model, "api_key": os.environ.get("STACKCHAN_LLM_KEY"),
                              "on": a.agent, "record": not a.no_record, "motion": not a.no_motion,
-                             "whisper_model": a.whisper_model, "tts_voice": a.tts_voice, "lang": a.lang, "think": a.llm_think}
+                             "whisper_model": a.whisper_model, "tts_voice": a.tts_voice, "lang": a.lang, "think": a.llm_think, "api": a.llm_api, "follow_s": a.follow_s, "tts_url": a.tts_url, "tools": a.tools}
         serve(a.host or DEFAULT_HOST, parse_ids(a.ids) if a.ids else None, a.hz, a.fps, a.listen, a.http_port, llm, a.qr)
         return 0
     try:

@@ -134,6 +134,31 @@ brew install whisper-cpp ffmpeg              # speech-to-text (local)
 
 Open `http://localhost:8765/` for the live page, then say "Hey Buddy".
 
+Claude instead of an OpenAI-compatible server: `--llm-api anthropic` sends the same turn to `/v1/messages`
+(STT and TTS stay local):
+
+```sh
+STACKCHAN_LLM_KEY=sk-ant-... ./stackchan --host stackchan.local dash \
+  --llm-api anthropic --llm-url https://api.anthropic.com --llm-model claude-sonnet-5-5 \
+  --whisper-model ~/models/ggml-large-v3-turbo.bin --agent --lang zh
+```
+
+A nicer voice: run [cli/cosyvoice_server.py](cli/cosyvoice_server.py) (CosyVoice 2) on a GPU box, tunnel it, and add
+`--tts-url http://127.0.0.1:50021/tts`. It starts talking on the first chunk (about 1 s on a DGX Spark); Kokoro
+speaks whenever the server is down.
+
+Tools (with `--llm-api anthropic`): `--tools tools.json` lets the model look things up mid-turn. It says a short
+line first, calls the tool, then answers. The file names a command and the tool definitions; a call runs
+`command + [name]` with the input as JSON on stdin and reads stdout:
+
+```json
+{"command": ["python3", "my_tools.py"], "prompt": "optional extra system prompt",
+ "tools": [{"name": "lookup", "description": "...", "input_schema": {"type": "object", "properties": {"q": {"type": "string"}}},
+            "secret": false}]}
+```
+
+`"secret": true` (a verification code, say) keeps that turn out of the episode log and the conversation history.
+
 ## Use from a coding agent
 
 Every CLI command prints one JSON object (NDJSON for `stream`), so Claude Code, Codex or any coding agent can drive
@@ -161,9 +186,10 @@ To write your own client, use [docs/protocol.md](docs/protocol.md).
 - **Speech runs while it moves**: each `say` is spoken in the background while the next steps execute.
 - **Gestures** (`wave`, `nod`, `shake`) are keyframes in `cli/gestures.py`; new gestures need no firmware change.
 - **Reasoning**: `--llm-think low|high|off`. Default `low` (short reasoning, a few times faster than `high`);
-  `off` is fastest.
+  `off` is fastest. With `--llm-api anthropic`, only `high` turns on extended thinking (newer models that think on
+  their own are told not to).
 - **Flags**: `--no-motion` keeps every servo still (faces and speech only, plus a small head lift on wake);
-  `--no-record` turns off episode recording; `--qr URL` shows a link as a QR code in the page corner. `STACKCHAN_LLM_URL`, `STACKCHAN_LLM_MODEL`, `STACKCHAN_LLM_KEY` and
+  `--no-record` turns off episode recording; `--qr URL` shows a link as a QR code in the page corner. `STACKCHAN_LLM_URL`, `STACKCHAN_LLM_MODEL`, `STACKCHAN_LLM_KEY`, `STACKCHAN_LLM_API` and
   `STACKCHAN_WHISPER_MODEL` work instead of the flags.
 
 ## Expressions
