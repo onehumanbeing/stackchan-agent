@@ -8,6 +8,7 @@
 #include "audio.h"
 #include "camera.h"
 #include "dance.h"
+#include "diag.h"
 #include "face.h"
 #include "net.h"
 #include "settings.h"
@@ -110,6 +111,7 @@ int goal(JsonVariantConst a, int id, bool &clamped) {
 
 void sysInfo(JsonObject r) {
   r["fw"] = FW_VERSION, r["mac"] = WiFi.macAddress(), r["uptime_s"] = millis() / 1000, r["heap"] = ESP.getFreeHeap();
+  r["reset"]["reason"] = diag::resetReason(), r["reset"]["stage"] = diag::lastStage();   // where a hang was
   JsonObject w = r["wifi"].to<JsonObject>();
   w["connected"] = net::connected(), w["ssid"] = net::ssid(), w["ip"] = net::ip(), w["rssi"] = net::rssi();
   JsonObject b = r["bus"].to<JsonObject>();

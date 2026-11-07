@@ -6,6 +6,7 @@
 #include "camera.h"
 #include "commands.h"
 #include "dance.h"
+#include "diag.h"
 #include "face.h"
 #include "net.h"
 
@@ -28,6 +29,7 @@ void pollUsb() {
 }  // namespace
 
 void setup() {
+  diag::begin();
   auto cfg = M5.config();
   M5.begin(cfg);
   M5.Power.setExtOutput(true);   // 5 V on the Grove ports (the bus adapter may take its logic power from there)
@@ -45,16 +47,18 @@ void setup() {
                else if (type == 'U') dance::upload(ch, data, len);
              });
   commands::hello(commands::USB);
+  diag::at(diag::IDLE);
 }
 
 void loop() {
-  M5.update();
-  pollUsb();
-  net::loop();
-  commands::loop();
-  dance::loop();
-  audio::loop();
-  face::loop();
+  diag::at(diag::M5_UPDATE), M5.update();
+  diag::at(diag::USB), pollUsb();
+  diag::at(diag::NET), net::loop();
+  diag::at(diag::COMMANDS), commands::loop();
+  diag::at(diag::DANCE), dance::loop();
+  diag::at(diag::AUDIO), audio::loop();
+  diag::at(diag::FACE), face::loop();
+  diag::at(diag::IDLE);
   static bool was_connected = false;
   if (net::connected() != was_connected) {
     was_connected = net::connected();
