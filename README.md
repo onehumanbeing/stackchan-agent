@@ -188,6 +188,14 @@ To write your own client, use [docs/protocol.md](docs/protocol.md).
 - **Reasoning**: `--llm-think low|high|off`. Default `low` (short reasoning, a few times faster than `high`);
   `off` is fastest. With `--llm-api anthropic`, only `high` turns on extended thinking (newer models that think on
   their own are told not to).
+- **Talking motion**: while it speaks, the head nods and sways on the beats of the speech, an arm now and then
+  (`cli/talk_motion.py`). Nods go up from the lowest pitch (`pitch_min` in the head calibration).
+- **Touch**: move its head by hand and it turns shy (face, hides behind its arms, turns away); lift its head while
+  it waits for the wake word and it wakes up (`cli/touch.py`).
+- **Looking on demand**: `--look` (Anthropic API) sends the camera frame only when the model calls its `look`
+  tool, not every turn: faster, and it stops remarking on what it sees.
+- **More flags**: `--max-says N` caps spoken sentences per turn; `--volume 0..255` sets the speaker;
+  `--follow-s S` keeps listening S seconds after an answer without the wake word (it listens while it thinks too).
 - **Flags**: `--no-motion` keeps every servo still (faces and speech only, plus a small head lift on wake);
   `--no-record` turns off episode recording; `--qr URL` shows a link as a QR code in the page corner. `STACKCHAN_LLM_URL`, `STACKCHAN_LLM_MODEL`, `STACKCHAN_LLM_KEY`, `STACKCHAN_LLM_API` and
   `STACKCHAN_WHISPER_MODEL` work instead of the flags.

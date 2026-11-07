@@ -151,7 +151,7 @@ class Voice(threading.Thread):
     def __init__(self, robot, agent, whisper_model, tts_voice=None, wake=WAKE, follow_s=FOLLOW_S, tts_url=None):
         super().__init__(daemon=True)
         self.robot, self.agent, self.wake, self.follow_s = robot, agent, wake, follow_s
-        self.tts = make_tts(tts_voice)
+        self.tts = self.local_tts = make_tts(tts_voice)     # the wake reply always uses the local voice
         self.tts_stream = lambda text: iter([self.tts(text)])
         if tts_url:
             cosy = CosyVoice(tts_url, self.tts)
@@ -161,7 +161,8 @@ class Voice(threading.Thread):
         self.stt = Whisper(whisper_model)
         self.mode = "idle"                       # idle (wake word) | listening (command) | busy
         self.buf, self.speech, self.silence, self.floor = bytearray(), False, 0.0, 200.0
-        self.utterances, self.lifted, self.deaf_until, self.pre, self.spoke_at = [], None, 0.0, b"", None     # pitch to go back to after a wake-up lift
+        self.utterances, self.lifted, self.deaf_until, self.pre, self.spoke_at = [], None, 0.0, b"", None
+        self.talking = False                     # playing audio: the mic is off
         self.arms_before = None                  # {id: deg} before the wake word sent the arms home
         self.lock = threading.Condition()
         robot.on_audio = self.feed
@@ -169,7 +170,7 @@ class Voice(threading.Thread):
 
     # --- mic side -------------------------------------------------------------------------------
     def feed(self, pcm):
-        if self.mode == "busy" or time.monotonic() < self.deaf_until:   # speaking, or its echo
+        if self.talking or time.monotonic() < self.deaf_until:   # speaking, or its echo (while it thinks it still listens)
             return
         self.pre = (self.pre + pcm)[-int(PREROLL_S * RATE) * 2:]
         a = array.array("h", pcm)
@@ -187,7 +188,9 @@ class Voice(threading.Thread):
         if self.silence >= end or seconds > 12:
             self.speech = False
             sound = seconds - PREROLL_S - self.silence
-            if sound >= (0.3 if self.mode == "idle" else 0.15):   # actual sound; a one-word command ("Dance") is short
+            if sound < (0.3 if self.mode == "idle" else 0.15):   # actual sound; a one-word command ("Dance") is short
+                self._log(f"dropped {sound:.2f} s of sound (too short; floor {self.floor:.0f})")
+            else:
                 with self.lock:
                     self.utterances.append((bytes(self.buf), time.monotonic() - self.silence))   # + when the speech ended
                     self.lock.notify()
@@ -200,9 +203,20 @@ class Voice(threading.Thread):
 
     # --- speaker side ---------------------------------------------------------------------------
     def say(self, text):
+        self.talking = True                      # the mic is off while it plays (half duplex)
+        self.talk = None
+        try:
+            self._say(text)
+        finally:
+            self.talking = False
+            if self.talk:
+                self.talk.stop()
+        self.deaf_until = time.monotonic() + (0.15 if text in HEARD.values() else 0.4)   # its own echo; short after
+        self._mic(True)                                                                  # "Listening": people answer fast
+
+    def _say(self, text):
         self.robot.request("face.set", say=text, ms=4000)
         chunks = iter([self._pcm(text)]) if text in HEARD.values() else self.tts_stream(text)
-        prev, self.mode = self.mode, "busy"
         pcm = next(chunks, b"")
         started = time.monotonic()
         if self.spoke_at and text not in HEARD.values():    # how long the person waited for the answer
@@ -212,7 +226,7 @@ class Voice(threading.Thread):
         self.robot.request("face.set", mouth=0.7)          # the eyes bob while it talks
         talk = None
         if self.agent.motion and text not in HEARD.values():   # small talking hands / nods (talk_motion.py)
-            talk = Talk(self.robot, self.agent, pcm).start()
+            talk = self.talk = Talk(self.robot, self.agent, pcm).start()
         for more in chunks:                      # the rest as it is synthesized
             self.robot.send_audio(more)
             if talk:
@@ -223,12 +237,7 @@ class Voice(threading.Thread):
             if not self.robot.request("speaker.status").get("playing"):
                 break
             time.sleep(0.1)
-        if talk:
-            talk.stop()
         self.robot.request("face.set", mouth=0)
-        self.mode = prev if prev != "busy" else "idle"
-        self.deaf_until = time.monotonic() + (0.15 if text in HEARD.values() else 0.4)   # its own echo; short after
-        self._mic(True)                                                                  # "Listening": people answer fast
 
     # --- main loop ------------------------------------------------------------------------------
     def run(self):
@@ -246,8 +255,18 @@ class Voice(threading.Thread):
                 self._log(f"error: {e}")
                 self.mode = "idle"
 
+    def wake_up(self):
+        """Wake up as if it heard the wake word (touch.py: the head lifted while asleep)."""
+        with self.lock:
+            self.utterances.append((None, None))
+            self.lock.notify()
+
     def _handle(self, pcm):
         if not self.agent.on:
+            return
+        if pcm is None:
+            if self.mode == "idle":
+                self._wake()
             return
         t0 = time.monotonic()
         text = self.stt.transcribe(pcm, self.agent.lang)
@@ -295,7 +314,7 @@ class Voice(threading.Thread):
             pitch, sign = s.get("head", {}).get("pitch"), s.get("calibration", {}).get("head", {}).get("pitch_sign", 1)
             if pitch is not None:
                 self.lifted = pitch
-                self.robot.request("head.move", id=2, deg=pitch + sign * LIFT_DEG, ms=250)
+                self.robot.request("head.move", id=2, deg=pitch + sign * LIFT_DEG, ms=400)
             if self.agent.motion:
                 self._arms_home(s)
         self.say(HEARD.get(self.agent.lang, HEARD["en"]))
@@ -303,7 +322,7 @@ class Voice(threading.Thread):
 
     def _pcm(self, text):
         if text not in self.cache:
-            self.cache[text] = self.tts(text)
+            self.cache[text] = self.local_tts(text)
         return self.cache[text]
 
     def _listen(self, seconds):

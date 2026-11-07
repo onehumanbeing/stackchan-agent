@@ -40,9 +40,14 @@ def stream(url, model, messages, on_think=None, on_line=None, max_tokens=600, ti
         uses = [b for b in blocks if b["type"] == "tool_use"]
         if stop != "tool_use" or not uses or not call_tool:
             break
-        results = [{"type": "tool_result", "tool_use_id": b["id"], "content": str(call_tool(b["name"], b["input"]))} for b in uses]
+        results = [{"type": "tool_result", "tool_use_id": b["id"], "content": _tool_content(call_tool(b["name"], b["input"]))} for b in uses]
         chat += [{"role": "assistant", "content": blocks}, {"role": "user", "content": results}]
     return lines.end()
+
+
+def _tool_content(out):
+    """A tool's result: text, or a list of content blocks (e.g. an image)."""
+    return out if isinstance(out, list) else str(out)
 
 
 class Lines:

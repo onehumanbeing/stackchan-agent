@@ -180,6 +180,10 @@ STACKCHAN_LLM_KEY=sk-ant-... ./stackchan --host stackchan.local dash \
 - **边说边动**：每句 `say` 在后台播放，同时执行后面的步骤。
 - **手势**（`wave`、`nod`、`shake`）是 `cli/gestures.py` 里的关键帧，加新手势不用重新烧录。
 - **推理强度**：`--llm-think low|high|off`。默认 `low`（简短推理，比 `high` 快几倍）；`off` 最快。用 `--llm-api anthropic` 时只有 `high` 会开启 extended thinking（会自行思考的新模型会被关掉思考）。
+- **说话律动**：说话时头随语音节拍点头、左右轻晃，偶尔抬一下手臂（`cli/talk_motion.py`）。点头从最低俯仰往上（头部标定里的 `pitch_min`）。
+- **摸头**：用手拨它的头会害羞（表情、双手捂脸、扭头）；等唤醒词时把头往上抬就会醒（`cli/touch.py`）。
+- **按需看**：`--look`（Anthropic API）只在模型调用 `look` 工具时才发摄像头画面，不是每轮都发：更快，也不再对看到的东西评头论足。
+- **更多参数**：`--max-says N` 限制每轮说几句；`--volume 0..255` 设置音量；`--follow-s S` 答完后 S 秒内不用唤醒词（思考时也在听）。
 - **参数**：`--no-motion` 让所有舵机不动（只有表情和语音，唤醒时头会轻微抬起）；`--no-record` 关闭数据记录；`--qr URL` 在页面右下角显示一个链接二维码。
   也可用环境变量 `STACKCHAN_LLM_URL`、`STACKCHAN_LLM_MODEL`、`STACKCHAN_LLM_KEY`、`STACKCHAN_LLM_API`、`STACKCHAN_WHISPER_MODEL` 代替参数。
 
